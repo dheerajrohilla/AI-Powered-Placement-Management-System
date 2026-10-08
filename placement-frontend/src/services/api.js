@@ -41,21 +41,48 @@ export const companyAPI = {
 
 // ==================== TPO SERVICES ====================
 export const tpoAPI = {
+  getProfile: () => apiClient.get('/tpo/profile'),
+  updateProfile: (data) => apiClient.put('/tpo/profile', data),
+  changePassword: (data) => apiClient.put('/tpo/change-password', data),
   getDashboard: () => apiClient.get('/tpo/dashboard'),
   getStudents: () => apiClient.get('/tpo/students'),
   getCompanies: () => apiClient.get('/tpo/companies'),
+  verifyCompany: (companyId, isVerified) => apiClient.post('/tpo/verify-company', { companyId, isVerified }),
   getDrives: () => apiClient.get('/tpo/drives'),
+  createDrive: (data) => apiClient.post('/tpo/drives', data),
+  updateDrive: (driveId, data) => apiClient.put(`/tpo/drives/${driveId}`, data),
+  toggleDriveStatus: (driveId, status) => apiClient.patch(`/tpo/drives/${driveId}/status`, { status }),
+  getApplications: () => apiClient.get('/tpo/applications'),
+  updateApplicationStatus: (applicationId, status) => apiClient.patch(`/tpo/applications/${applicationId}/status`, { status }),
   getInterviews: () => apiClient.get('/tpo/interviews'),
+  getAnalytics: () => apiClient.get('/tpo/analytics'),
   generateReports: () => apiClient.get('/tpo/reports'),
+  getNotifications: () => apiClient.get('/tpo/notifications'),
+  markNotificationRead: (notificationId) => apiClient.patch(`/tpo/notifications/${notificationId}/read`),
 };
 
 // ==================== ADMIN SERVICES ====================
 export const adminAPI = {
+  getProfile: () => apiClient.get('/admin/profile'),
+  updateProfile: (data) => apiClient.put('/admin/profile', data),
+  changePassword: (data) => apiClient.put('/admin/change-password', data),
   getDashboard: () => apiClient.get('/admin/dashboard'),
+  getUsers: () => apiClient.get('/admin/users'),
+  createUser: (data) => apiClient.post('/admin/users', data),
+  toggleUserStatus: (userId, isActive) => apiClient.patch(`/admin/users/${userId}/status`, { isActive }),
+  resetUserPassword: (userId, newPassword) => apiClient.post(`/admin/users/${userId}/reset-password`, { newPassword }),
+  deleteUser: (userId) => apiClient.delete(`/admin/users/${userId}`),
+  getRolesPermissions: () => apiClient.get('/admin/roles-permissions'),
+  getSystemConfig: () => apiClient.get('/admin/configuration'),
+  updateSystemConfig: (data) => apiClient.put('/admin/configuration', data),
+  getMonitoring: () => apiClient.get('/admin/monitoring'),
+  getAnalytics: () => apiClient.get('/admin/analytics'),
   getStudents: () => apiClient.get('/admin/students'),
   getCompanies: () => apiClient.get('/admin/companies'),
   verifyCompany: (companyId) => apiClient.post('/admin/verify-company', { companyId }),
   getDrives: () => apiClient.get('/admin/drives'),
   getInterviews: () => apiClient.get('/admin/interviews'),
   generateReports: () => apiClient.get('/admin/reports'),
+  getNotifications: () => apiClient.get('/admin/notifications'),
+  markNotificationRead: (notificationId) => apiClient.patch(`/admin/notifications/${notificationId}/read`),
 };

@@ -30,6 +30,35 @@ const studentSchema = new mongoose.Schema({
   },
   skills: [String],
   bio: String,
+  education: [{
+    degree: String,
+    institution: String,
+    passoutYear: String,
+    score: String
+  }],
+  projects: [{
+    title: String,
+    description: String,
+    techStack: [String],
+    link: String
+  }],
+  certifications: [{
+    title: String,
+    issuer: String,
+    issueDate: String
+  }],
+  experience: [{
+    role: String,
+    company: String,
+    duration: String,
+    description: String
+  }],
+  socialLinks: {
+    github: { type: String, default: '' },
+    linkedin: { type: String, default: '' },
+    leetcode: { type: String, default: '' },
+    portfolio: { type: String, default: '' }
+  },
   atsScore: {
     type: Number,
     default: 0

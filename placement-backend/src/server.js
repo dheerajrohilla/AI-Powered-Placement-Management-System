@@ -85,7 +85,14 @@ export const startServer = async () => {
 
 setupApp();
 
-if (process.env.NODE_ENV !== 'test') {
+const isTestEnv = Boolean(
+  process.env.NODE_ENV === 'test' ||
+  process.env.NODE_TEST_CONTEXT ||
+  process.argv.some(arg => arg.includes('test')) ||
+  process.execArgv.some(arg => arg.includes('test'))
+);
+
+if (!isTestEnv) {
   startServer();
 }
 

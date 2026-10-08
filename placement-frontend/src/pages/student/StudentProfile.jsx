@@ -57,7 +57,8 @@ function StudentProfile() {
         skills: skillsArray,
         department: profile.department,
         batch: profile.batch,
-        rollNumber: profile.rollNumber
+        rollNumber: profile.rollNumber,
+        cgpa: profile.cgpa !== "" ? Number(profile.cgpa) : 0
       });
       setMessage("Profile saved successfully!");
       setEditing(false);
@@ -180,7 +181,20 @@ function StudentProfile() {
 
               <div>
                 <label>CGPA</label>
-                <p>{profile.cgpa || "Not specified"}</p>
+                {editing ? (
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="10"
+                    name="cgpa"
+                    value={profile.cgpa}
+                    onChange={handleChange}
+                    placeholder="e.g. 8.5"
+                  />
+                ) : (
+                  <p>{profile.cgpa || "Not specified"}</p>
+                )}
               </div>
 
             </div>

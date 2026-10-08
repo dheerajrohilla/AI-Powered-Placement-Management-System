@@ -4,12 +4,21 @@ import Application from '../models/Application.js';
 import Interview from '../models/Interview.js';
 import Student from '../models/Student.js';
 
+const findOrCreateCompany = async (user) => {
+  let company = await Company.findOne({ userId: user.id });
+  if (!company) {
+    company = await Company.create({
+      userId: user.id,
+      companyName: user.name || `Company-${Date.now().toString().slice(-4)}`,
+      isVerified: true
+    });
+  }
+  return company;
+};
+
 export const getDashboard = async (req, res) => {
   try {
-    const company = await Company.findOne({ userId: req.user.id });
-    if (!company) {
-      return res.status(404).json({ error: 'Company profile not found' });
-    }
+    const company = await findOrCreateCompany(req.user);
 
     const drives = await PlacementDrive.countDocuments({ company: company._id });
     const applications = await Application.countDocuments({ company: company._id });
@@ -24,8 +33,8 @@ export const getDashboard = async (req, res) => {
       applications,
       interviewed,
       selected,
-      filledPositions: company.filledPositions,
-      totalPositions: company.totalPositions
+      filledPositions: company.filledPositions || 0,
+      totalPositions: company.totalPositions || 0
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -34,7 +43,7 @@ export const getDashboard = async (req, res) => {
 
 export const createDrive = async (req, res) => {
   try {
-    const company = await Company.findOne({ userId: req.user.id });
+    const company = await findOrCreateCompany(req.user);
     const drive = await PlacementDrive.create({
       ...req.body,
       company: company._id
@@ -47,7 +56,7 @@ export const createDrive = async (req, res) => {
 
 export const getDrives = async (req, res) => {
   try {
-    const company = await Company.findOne({ userId: req.user.id });
+    const company = await findOrCreateCompany(req.user);
     const drives = await PlacementDrive.find({ company: company._id });
     res.json(drives);
   } catch (error) {
@@ -57,10 +66,7 @@ export const getDrives = async (req, res) => {
 
 export const getApplicants = async (req, res) => {
   try {
-    const company = await Company.findOne({ userId: req.user.id });
-    if (!company) {
-      return res.status(404).json({ error: 'Company profile not found' });
-    }
+    const company = await findOrCreateCompany(req.user);
     const applicants = await Application.find({ company: company._id })
       .populate({ path: 'student', populate: { path: 'userId', select: 'name email' } })
       .populate('placementDrive')
@@ -73,10 +79,7 @@ export const getApplicants = async (req, res) => {
 
 export const getShortlisted = async (req, res) => {
   try {
-    const company = await Company.findOne({ userId: req.user.id });
-    if (!company) {
-      return res.status(404).json({ error: 'Company profile not found' });
-    }
+    const company = await findOrCreateCompany(req.user);
     const shortlisted = await Application.find({
       company: company._id,
       status: { $in: ['shortlisted', 'selected'] }
@@ -91,10 +94,7 @@ export const getShortlisted = async (req, res) => {
 
 export const scheduleInterview = async (req, res) => {
   try {
-    const company = await Company.findOne({ userId: req.user.id });
-    if (!company) {
-      return res.status(404).json({ error: 'Company account not found' });
-    }
+    const company = await findOrCreateCompany(req.user);
 
     const interview = await Interview.create({
       ...req.body,
@@ -111,10 +111,7 @@ export const updateApplicationStatus = async (req, res) => {
     const { applicationId } = req.params;
     const { status } = req.body;
 
-    const company = await Company.findOne({ userId: req.user.id });
-    if (!company) {
-      return res.status(404).json({ error: 'Company account not found' });
-    }
+    const company = await findOrCreateCompany(req.user);
 
     const validStatuses = ['applied', 'shortlisted', 'rejected', 'selected'];
     if (!validStatuses.includes(status)) {
@@ -152,10 +149,7 @@ export const updateApplicationStatus = async (req, res) => {
 
 export const getInterviews = async (req, res) => {
   try {
-    const company = await Company.findOne({ userId: req.user.id });
-    if (!company) {
-      return res.status(404).json({ error: 'Company profile not found' });
-    }
+    const company = await findOrCreateCompany(req.user);
     const interviews = await Interview.find({ company: company._id })
       .populate({ path: 'student', populate: { path: 'userId', select: 'name email' } })
       .populate('placementDrive')

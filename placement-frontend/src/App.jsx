@@ -1,15 +1,8 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Reports from "./pages/TPO/Reports";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
-import TPOInterviews from "./pages/TPO/Interviews";
-import AdminDashboard from "./pages/Admin/AdminDashboard";
-import AdminStudents from "./pages/Admin/Students";
-import AdminCompanies from "./pages/Admin/Companies";
-import AdminPlacementDrives from "./pages/Admin/PlacementDrives";
-import AdminInterviews from "./pages/Admin/Interviews";
-import AdminReports from "./pages/Admin/Reports";
-// ================= STUDENT PAGES =================
+import ProtectedRoute from "./components/ProtectedRoute";
 
+// ================= STUDENT PAGES =================
 import StudentDashboard from "./pages/student/StudentDashboard";
 import StudentProfile from "./pages/student/StudentProfile";
 import StudentResume from "./pages/student/StudentResume";
@@ -19,7 +12,6 @@ import StudentInterviews from "./pages/student/Interviews";
 import AIResumeAnalysis from "./pages/student/AIResumeAnalysis";
 
 // ================= COMPANY PAGES =================
-
 import CompanyDashboard from "./pages/Company/CompanyDashboard";
 import CreateDrive from "./pages/Company/CreateDrive";
 import CompanyDrives from "./pages/Company/CompanyDrives";
@@ -28,153 +20,79 @@ import Shortlisted from "./pages/Company/Shortlisted";
 import CompanyInterviews from "./pages/Company/Interviews";
 
 // ================= TPO PAGES =================
-
 import TPODashboard from "./pages/TPO/TPODashboard";
-import Students from "./pages/TPO/Students";
-import Companies from "./pages/TPO/Companies";
-import PlacementDrivesTPO from "./pages/TPO/PlacementDrives";
+import TPOProfile from "./pages/TPO/TPOProfile";
+import TPOStudents from "./pages/TPO/Students";
+import TPOCompanies from "./pages/TPO/Companies";
+import TPOPlacementDrives from "./pages/TPO/PlacementDrives";
+import TPOApplications from "./pages/TPO/Applications";
+import TPOInterviews from "./pages/TPO/Interviews";
+import TPOAnalytics from "./pages/TPO/Analytics";
+import TPOReports from "./pages/TPO/Reports";
+import TPONotifications from "./pages/TPO/Notifications";
 
+// ================= ADMIN PAGES =================
+import AdminDashboard from "./pages/Admin/AdminDashboard";
+import AdminProfile from "./pages/Admin/AdminProfile";
+import AdminUsers from "./pages/Admin/Users";
+import AdminRolesPermissions from "./pages/Admin/RolesPermissions";
+import AdminSystemConfig from "./pages/Admin/SystemConfig";
+import AdminMonitoring from "./pages/Admin/Monitoring";
+import AdminAnalytics from "./pages/Admin/AdminAnalytics";
+import AdminNotifications from "./pages/Admin/Notifications";
 
 function App() {
   return (
     <BrowserRouter>
-
       <Routes>
 
         {/* ================= LOGIN ================= */}
-
-        <Route
-          path="/"
-          element={<Login />}
-        />
-
+        <Route path="/" element={<Login />} />
 
         {/* ================= STUDENT ROUTES ================= */}
-
-        <Route
-          path="/student"
-          element={<StudentDashboard />}
-        />
-
-        <Route
-          path="/student/profile"
-          element={<StudentProfile />}
-        />
-
-        <Route
-          path="/student/resume"
-          element={<StudentResume />}
-        />
-
-        <Route
-          path="/student/jobs"
-          element={<PlacementDrives />}
-        />
-
-        <Route
-          path="/student/applications"
-          element={<Applications />}
-        />
-
-        <Route
-          path="/student/interviews"
-          element={<StudentInterviews />}
-        />
-
-        <Route
-          path="/student/ats"
-          element={<AIResumeAnalysis />}
-        />
-
+        <Route path="/student" element={<ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>} />
+        <Route path="/student/profile" element={<ProtectedRoute allowedRoles={['student']}><StudentProfile /></ProtectedRoute>} />
+        <Route path="/student/resume" element={<ProtectedRoute allowedRoles={['student']}><StudentResume /></ProtectedRoute>} />
+        <Route path="/student/jobs" element={<ProtectedRoute allowedRoles={['student']}><PlacementDrives /></ProtectedRoute>} />
+        <Route path="/student/applications" element={<ProtectedRoute allowedRoles={['student']}><Applications /></ProtectedRoute>} />
+        <Route path="/student/interviews" element={<ProtectedRoute allowedRoles={['student']}><StudentInterviews /></ProtectedRoute>} />
+        <Route path="/student/ats" element={<ProtectedRoute allowedRoles={['student']}><AIResumeAnalysis /></ProtectedRoute>} />
 
         {/* ================= COMPANY ROUTES ================= */}
-
-        <Route
-          path="/company"
-          element={<CompanyDashboard />}
-        />
-
-        <Route
-          path="/company/create-drive"
-          element={<CreateDrive />}
-        />
-
-        <Route
-          path="/company/drives"
-          element={<CompanyDrives />}
-        />
-
-        <Route
-          path="/company/applicants"
-          element={<Applicants />}
-        />
-
-        <Route
-          path="/company/shortlisted"
-          element={<Shortlisted />}
-        />
-
-        <Route
-          path="/company/interviews"
-          element={<CompanyInterviews />}
-        />
-
+        <Route path="/company" element={<ProtectedRoute allowedRoles={['company']}><CompanyDashboard /></ProtectedRoute>} />
+        <Route path="/company/create-drive" element={<ProtectedRoute allowedRoles={['company']}><CreateDrive /></ProtectedRoute>} />
+        <Route path="/company/drives" element={<ProtectedRoute allowedRoles={['company']}><CompanyDrives /></ProtectedRoute>} />
+        <Route path="/company/applicants" element={<ProtectedRoute allowedRoles={['company']}><Applicants /></ProtectedRoute>} />
+        <Route path="/company/shortlisted" element={<ProtectedRoute allowedRoles={['company']}><Shortlisted /></ProtectedRoute>} />
+        <Route path="/company/interviews" element={<ProtectedRoute allowedRoles={['company']}><CompanyInterviews /></ProtectedRoute>} />
 
         {/* ================= TPO ROUTES ================= */}
+        <Route path="/tpo" element={<ProtectedRoute allowedRoles={['tpo', 'admin']}><TPODashboard /></ProtectedRoute>} />
+        <Route path="/tpo/dashboard" element={<Navigate to="/tpo" replace />} />
+        <Route path="/tpo/profile" element={<ProtectedRoute allowedRoles={['tpo', 'admin']}><TPOProfile /></ProtectedRoute>} />
+        <Route path="/tpo/students" element={<ProtectedRoute allowedRoles={['tpo', 'admin']}><TPOStudents /></ProtectedRoute>} />
+        <Route path="/tpo/companies" element={<ProtectedRoute allowedRoles={['tpo', 'admin']}><TPOCompanies /></ProtectedRoute>} />
+        <Route path="/tpo/drives" element={<ProtectedRoute allowedRoles={['tpo', 'admin']}><TPOPlacementDrives /></ProtectedRoute>} />
+        <Route path="/tpo/applications" element={<ProtectedRoute allowedRoles={['tpo', 'admin']}><TPOApplications /></ProtectedRoute>} />
+        <Route path="/tpo/interviews" element={<ProtectedRoute allowedRoles={['tpo', 'admin']}><TPOInterviews /></ProtectedRoute>} />
+        <Route path="/tpo/analytics" element={<ProtectedRoute allowedRoles={['tpo', 'admin']}><TPOAnalytics /></ProtectedRoute>} />
+        <Route path="/tpo/reports" element={<ProtectedRoute allowedRoles={['tpo', 'admin']}><TPOReports /></ProtectedRoute>} />
+        <Route path="/tpo/notifications" element={<ProtectedRoute allowedRoles={['tpo', 'admin']}><TPONotifications /></ProtectedRoute>} />
 
-        <Route
-          path="/tpo"
-          element={<TPODashboard />}
-        />
+        {/* ================= ADMIN ROUTES ================= */}
+        <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />
+        <Route path="/admin/profile" element={<ProtectedRoute allowedRoles={['admin']}><AdminProfile /></ProtectedRoute>} />
+        <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
+        <Route path="/admin/roles-permissions" element={<ProtectedRoute allowedRoles={['admin']}><AdminRolesPermissions /></ProtectedRoute>} />
+        <Route path="/admin/configuration" element={<ProtectedRoute allowedRoles={['admin']}><AdminSystemConfig /></ProtectedRoute>} />
+        <Route path="/admin/monitoring" element={<ProtectedRoute allowedRoles={['admin']}><AdminMonitoring /></ProtectedRoute>} />
+        <Route path="/admin/analytics" element={<ProtectedRoute allowedRoles={['admin']}><AdminAnalytics /></ProtectedRoute>} />
+        <Route path="/admin/notifications" element={<ProtectedRoute allowedRoles={['admin']}><AdminNotifications /></ProtectedRoute>} />
 
-        <Route
-          path="/tpo/students"
-          element={<Students />}
-        />
-
-        <Route
-          path="/tpo/companies"
-          element={<Companies />}
-        />
-
-        <Route
-          path="/tpo/drives"
-          element={<PlacementDrivesTPO />}
-        />
-        <Route
-          path="/tpo/interviews"
-          element={<TPOInterviews />}
-        />
-        <Route
-          path="/tpo/reports"
-          element={<Reports />}
-        />
-        <Route
-          path="/admin"
-          element={<AdminDashboard />}
-        />
-        <Route
-          path="/admin/students"
-          element={<AdminStudents />}
-        />
-        <Route
-          path="/admin/companies"
-          element={<AdminCompanies />}
-        />
-        <Route
-  path="/admin/drives"
-  element={<AdminPlacementDrives />}
-/>
-        <Route
-  path="/admin/interviews"
-  element={<AdminInterviews />}
-/>
-<Route
-  path="/admin/reports"
-  element={<AdminReports />}
-/>
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-
     </BrowserRouter>
   );
 }

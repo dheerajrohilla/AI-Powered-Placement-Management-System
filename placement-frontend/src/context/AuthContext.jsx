@@ -34,7 +34,7 @@ export const AuthProvider = ({ children }) => {
       
       return userData;
     } catch (err) {
-      const errorMessage = err.response?.data?.error || 'Registration failed';
+      const errorMessage = err.response?.data?.error || (err.request ? 'Server is offline or unreachable. Ensure backend is running on port 5000.' : 'Registration failed');
       setError(errorMessage);
       const registrationError = new Error(errorMessage, { cause: err });
       throw registrationError;
@@ -60,7 +60,7 @@ export const AuthProvider = ({ children }) => {
       
       return userData;
     } catch (err) {
-      const errorMessage = err.response?.data?.error || 'Login failed';
+      const errorMessage = err.response?.data?.error || (err.request ? 'Server is offline or unreachable. Ensure backend is running on port 5000.' : 'Login failed');
       setError(errorMessage);
       const loginError = new Error(errorMessage, { cause: err });
       throw loginError;

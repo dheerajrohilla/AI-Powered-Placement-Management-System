@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import User from '../models/User.js';
 import Student from '../models/Student.js';
 import Company from '../models/Company.js';
+import TPO from '../models/TPO.js';
 import jwt from 'jsonwebtoken';
 
 const signToken = (id, role) => {
@@ -14,15 +15,23 @@ export const register = async (req, res) => {
   try {
     const { name, email, password, role, additionalData } = req.body;
 
-    const allowedRoles = ['student', 'company'];
+    const allowedRoles = ['student', 'company', 'tpo', 'admin'];
     if (!allowedRoles.includes(role)) {
-      return res.status(400).json({ error: 'Registration is only allowed for student or company accounts.' });
+      return res.status(400).json({ error: 'Invalid registration role.' });
     }
 
     // Check if user exists
     const userExists = await User.findOne({ email });
     if (userExists) {
-      return res.status(400).json({ error: 'User already exists' });
+      return res.status(400).json({ error: 'User with this email already exists' });
+    }
+
+    // Check if student roll number exists
+    if (role === 'student' && additionalData?.rollNumber) {
+      const rollExists = await Student.findOne({ rollNumber: additionalData.rollNumber });
+      if (rollExists) {
+        return res.status(400).json({ error: 'A student with this Roll Number already exists' });
+      }
     }
 
     // Create user
@@ -33,29 +42,42 @@ export const register = async (req, res) => {
       role
     });
 
-    // Create role-specific data
-    if (role === 'student') {
-      await Student.create({
-        userId: user._id,
-        rollNumber: additionalData?.rollNumber || `ROLL-${Date.now()}`,
-        department: additionalData?.department || 'General',
-        batch: additionalData?.batch || new Date().getFullYear().toString(),
-        cgpa: additionalData?.cgpa != null ? Number(additionalData.cgpa) : 0,
-        skills: Array.isArray(additionalData?.skills) ? additionalData.skills : [],
-        bio: additionalData?.bio || ''
-      });
-    } else if (role === 'company') {
-      await Company.create({
-        userId: user._id,
-        companyName: additionalData?.companyName || name,
-        hrName: additionalData?.hrName || name,
-        hrEmail: additionalData?.hrEmail || email,
-        hrPhone: additionalData?.hrPhone || '',
-        industry: additionalData?.industry || '',
-        location: additionalData?.location || '',
-        website: additionalData?.website || '',
-        description: additionalData?.description || ''
-      });
+    // Create role-specific data with cleanup on failure
+    try {
+      if (role === 'student') {
+        await Student.create({
+          userId: user._id,
+          rollNumber: additionalData?.rollNumber || `ROLL-${Date.now()}`,
+          department: additionalData?.department || 'General',
+          batch: additionalData?.batch || new Date().getFullYear().toString(),
+          cgpa: additionalData?.cgpa != null ? Number(additionalData.cgpa) : 0,
+          skills: Array.isArray(additionalData?.skills) ? additionalData.skills : [],
+          bio: additionalData?.bio || ''
+        });
+      } else if (role === 'company') {
+        await Company.create({
+          userId: user._id,
+          companyName: additionalData?.companyName || name,
+          hrName: additionalData?.hrName || name,
+          hrEmail: additionalData?.hrEmail || email,
+          hrPhone: additionalData?.hrPhone || '',
+          industry: additionalData?.industry || '',
+          location: additionalData?.location || '',
+          website: additionalData?.website || '',
+          description: additionalData?.description || ''
+        });
+      } else if (role === 'tpo') {
+        await TPO.create({
+          userId: user._id,
+          employeeId: additionalData?.employeeId || `EMP-${Date.now()}`,
+          department: additionalData?.department || 'Training & Placement Office',
+          designation: additionalData?.designation || 'Training & Placement Officer',
+          phone: additionalData?.phone || ''
+        });
+      }
+    } catch (profileErr) {
+      await User.findByIdAndDelete(user._id);
+      throw profileErr;
     }
 
     // Generate token
@@ -71,7 +93,11 @@ export const register = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    if (error.code === 11000) {
+      const keyName = Object.keys(error.keyValue || {})[0] || 'field';
+      return res.status(400).json({ error: `An account with that ${keyName} already exists.` });
+    }
+    res.status(400).json({ error: error.message });
   }
 };
 
@@ -88,6 +114,10 @@ export const login = async (req, res) => {
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    if (user.isActive === false) {
+      return res.status(403).json({ error: 'Account is deactivated. Please contact system administrator.' });
     }
 
     // Check if password matches

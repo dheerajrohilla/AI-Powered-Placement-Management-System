@@ -1,16 +1,16 @@
+process.env.NODE_ENV = 'test';
+process.env.MONGODB_URI = process.env.MONGODB_URI_TEST || 'mongodb://localhost:27017/placement-db-test';
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from '../server.js';
 import { connectDB } from '../config/db.js';
 import { seedDatabase } from '../seed/seed.js';
-
 import mongoose from 'mongoose';
 
 let server;
 
 test.before(async () => {
-  process.env.NODE_ENV = 'test';
-  process.env.MONGODB_URI = process.env.MONGODB_URI_TEST || 'mongodb://localhost:27017/placement-db-test';
   await connectDB();
   await seedDatabase({ reset: true });
 
@@ -61,3 +61,28 @@ test('forgot password route accepts valid email', async () => {
   const data = await response.json();
   assert.ok(data.message);
 });
+
+test('student registration succeeds', async () => {
+  const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Samreen Shaik',
+      email: 'samreen.test@example.com',
+      password: 'password123',
+      role: 'student',
+      additionalData: {
+        rollNumber: 'ROLL-9999',
+        department: 'CSE',
+        batch: '2026'
+      }
+    })
+  });
+
+  assert.equal(response.status, 201);
+  const data = await response.json();
+  assert.ok(data.token);
+  assert.equal(data.user.name, 'Samreen Shaik');
+  assert.equal(data.user.email, 'samreen.test@example.com');
+});
+

@@ -4,23 +4,15 @@ import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Student from '../models/Student.js';
 import Company from '../models/Company.js';
+import TPO from '../models/TPO.js';
 import PlacementDrive from '../models/PlacementDrive.js';
 import Application from '../models/Application.js';
 import Interview from '../models/Interview.js';
+import Notification from '../models/Notification.js';
+import AuditLog from '../models/AuditLog.js';
+import SystemConfig from '../models/SystemConfig.js';
 
 const daysFromNow = (days) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-
-// ============================================================================
-// SEED DATA
-// ----------------------------------------------------------------------------
-// Login credentials created by this seed (all work on a fresh download + run):
-//   Admin      -> admin@placement.com      / admin123
-//   TPO Head   -> tpohead@placement.com    / tpohead123
-//   Students   -> prajwal@student.com      / student123   (+ aditya, sneha,
-//                 rahul, ananya @student.com / student123)
-//   Companies  -> careers@abctech.com      / company123   (+ jobs@techsolutions,
-//                 campus@infosys, careers@deloitte, careers@wipro, careers@tcs)
-// ============================================================================
 
 const seedUsers = [
   { name: 'Admin User', email: 'admin@placement.com', password: 'admin123', role: 'admin', phone: '9999999999' },
@@ -39,11 +31,79 @@ const seedUsers = [
 ];
 
 const seedStudents = [
-  { userEmail: 'prajwal@student.com', rollNumber: '2021001', department: 'CSE', batch: '2021', cgpa: 8.6, skills: ['Java', 'React', 'MongoDB', 'Node.js'], bio: 'Software engineering student passionate about backend systems and web development.', atsScore: 84, profileStrength: 88, isPlaced: false },
-  { userEmail: 'aditya@student.com', rollNumber: '2021002', department: 'CSE', batch: '2021', cgpa: 9.1, skills: ['Java', 'Spring Boot', 'MySQL', 'System Design'], bio: 'Backend-focused student with experience in APIs, databases, and scalable services.', atsScore: 91, profileStrength: 94, isPlaced: false },
-  { userEmail: 'sneha@student.com', rollNumber: '2022003', department: 'ECE', batch: '2022', cgpa: 8.8, skills: ['React', 'JavaScript', 'CSS', 'UI/UX'], bio: 'Frontend developer focused on clean interfaces and responsive product design.', atsScore: 87, profileStrength: 90, isPlaced: false },
-  { userEmail: 'rahul@student.com', rollNumber: '2021004', department: 'IT', batch: '2021', cgpa: 7.9, skills: ['Python', 'Django', 'PostgreSQL', 'REST APIs'], bio: 'Information technology student interested in web frameworks and databases.', atsScore: 80, profileStrength: 82, isPlaced: false },
-  { userEmail: 'ananya@student.com', rollNumber: '2022005', department: 'CSE', batch: '2022', cgpa: 9.0, skills: ['Data Analysis', 'SQL', 'Python', 'Power BI'], bio: 'Aspiring data analyst with strong statistics and visualization skills.', atsScore: 89, profileStrength: 92, isPlaced: false }
+  {
+    userEmail: 'prajwal@student.com',
+    rollNumber: '2021001',
+    department: 'CSE',
+    batch: '2021',
+    cgpa: 8.6,
+    skills: ['Java', 'React', 'MongoDB', 'Node.js'],
+    bio: 'Software engineering student passionate about backend systems and web development.',
+    atsScore: 84,
+    profileStrength: 88,
+    isPlaced: false,
+    education: [{ degree: 'B.Tech CSE', institution: 'NIT Engineering College', passoutYear: '2025', score: '8.6 CGPA' }],
+    projects: [{ title: 'AI Placement Management System', description: 'Centralized portal connecting students, companies, and TPOs.', techStack: ['React', 'Node.js', 'MongoDB'], link: 'https://github.com/prajwal/placement-system' }],
+    certifications: [{ title: 'AWS Certified Cloud Practitioner', issuer: 'Amazon Web Services', issueDate: '2024' }],
+    socialLinks: { github: 'https://github.com/prajwal', linkedin: 'https://linkedin.com/in/prajwal', leetcode: 'https://leetcode.com/prajwal' }
+  },
+  {
+    userEmail: 'aditya@student.com',
+    rollNumber: '2021002',
+    department: 'CSE',
+    batch: '2021',
+    cgpa: 9.1,
+    skills: ['Java', 'Spring Boot', 'MySQL', 'System Design'],
+    bio: 'Backend-focused student with experience in APIs, databases, and scalable services.',
+    atsScore: 91,
+    profileStrength: 94,
+    isPlaced: false,
+    education: [{ degree: 'B.Tech CSE', institution: 'NIT Engineering College', passoutYear: '2025', score: '9.1 CGPA' }],
+    projects: [{ title: 'Distributed Microservices Gateway', description: 'High throughput API gateway using Spring Cloud.', techStack: ['Spring Boot', 'Redis', 'Kafka'], link: 'https://github.com/aditya/microgateway' }],
+    certifications: [{ title: 'Oracle Certified Java SE Professional', issuer: 'Oracle', issueDate: '2023' }],
+    socialLinks: { github: 'https://github.com/aditya', linkedin: 'https://linkedin.com/in/aditya', leetcode: 'https://leetcode.com/aditya' }
+  },
+  {
+    userEmail: 'sneha@student.com',
+    rollNumber: '2022003',
+    department: 'ECE',
+    batch: '2022',
+    cgpa: 8.8,
+    skills: ['React', 'JavaScript', 'CSS', 'UI/UX'],
+    bio: 'Frontend developer focused on clean interfaces and responsive product design.',
+    atsScore: 87,
+    profileStrength: 90,
+    isPlaced: false,
+    education: [{ degree: 'B.Tech ECE', institution: 'NIT Engineering College', passoutYear: '2026', score: '8.8 CGPA' }],
+    projects: [{ title: 'Design System & UI Component Library', description: 'Accessible UI kit built with React and Tailwind CSS.', techStack: ['React', 'TypeScript', 'Tailwind'], link: 'https://github.com/sneha/uikit' }],
+    socialLinks: { github: 'https://github.com/sneha', linkedin: 'https://linkedin.com/in/sneha' }
+  },
+  {
+    userEmail: 'rahul@student.com',
+    rollNumber: '2021004',
+    department: 'IT',
+    batch: '2021',
+    cgpa: 7.9,
+    skills: ['Python', 'Django', 'PostgreSQL', 'REST APIs'],
+    bio: 'Information technology student interested in web frameworks and databases.',
+    atsScore: 80,
+    profileStrength: 82,
+    isPlaced: false,
+    socialLinks: { github: 'https://github.com/rahul' }
+  },
+  {
+    userEmail: 'ananya@student.com',
+    rollNumber: '2022005',
+    department: 'CSE',
+    batch: '2022',
+    cgpa: 9.0,
+    skills: ['Data Analysis', 'SQL', 'Python', 'Power BI'],
+    bio: 'Aspiring data analyst with strong statistics and visualization skills.',
+    atsScore: 89,
+    profileStrength: 92,
+    isPlaced: false,
+    socialLinks: { github: 'https://github.com/ananya', linkedin: 'https://linkedin.com/in/ananya' }
+  }
 ];
 
 const seedCompanies = [
@@ -109,9 +169,13 @@ export const seedDatabase = async (options = {}) => {
         User.deleteMany({}),
         Student.deleteMany({}),
         Company.deleteMany({}),
+        TPO.deleteMany({}),
         PlacementDrive.deleteMany({}),
         Application.deleteMany({}),
-        Interview.deleteMany({})
+        Interview.deleteMany({}),
+        Notification.deleteMany({}),
+        AuditLog.deleteMany({}),
+        SystemConfig.deleteMany({})
       ]);
       console.log('✓ Database reset complete.');
     }
@@ -138,6 +202,54 @@ export const seedDatabase = async (options = {}) => {
       const user = userMap.get(seed.userEmail);
       const { userEmail, ...data } = seed;
       await upsertCompany(user._id, data);
+    }
+
+    // ---- TPO profile ----
+    const tpoUser = userMap.get('tpohead@placement.com');
+    if (tpoUser) {
+      let tpoProfile = await TPO.findOne({ userId: tpoUser._id });
+      if (!tpoProfile) {
+        await TPO.create({
+          userId: tpoUser._id,
+          employeeId: 'EMP-TPO-001',
+          department: 'Training & Placement Cell',
+          designation: 'Head Training & Placement Officer',
+          collegeName: 'National Institute of Technology',
+          phone: tpoUser.phone || '8888888888'
+        });
+      }
+    }
+
+    // ---- System Configuration ----
+    let sysConfig = await SystemConfig.findOne();
+    if (!sysConfig) {
+      await SystemConfig.create({
+        collegeName: 'National Institute of Technology',
+        collegeCode: 'NIT-2026',
+        address: 'Campus Road, University Enclave',
+        contactEmail: 'placement@college.edu',
+        academicYear: '2025-2026',
+        departments: ['CSE', 'ECE', 'IT', 'ME', 'EEE', 'Civil'],
+        placementSettings: { minCgpaDefault: 6.5, autoShortlistThreshold: 8.0, maxApplicationsPerStudent: 15 }
+      });
+    }
+
+    // ---- Seed Initial Notifications & Audit Logs ----
+    const notifCount = await Notification.countDocuments();
+    if (notifCount === 0) {
+      await Notification.create([
+        { recipientRole: 'all', title: 'Placement Season 2025-2026 Live', message: 'Campus placement registrations are now open for all eligible students.', type: 'info' },
+        { recipientRole: 'tpo', title: 'New Company Registration', message: 'ABC Technologies registered on the portal.', type: 'success' },
+        { recipientRole: 'admin', title: 'System Configuration Initialized', message: 'Default placement rules and academic year configured.', type: 'info' }
+      ]);
+    }
+
+    const logCount = await AuditLog.countDocuments();
+    if (logCount === 0) {
+      await AuditLog.create([
+        { userName: 'Admin User', userRole: 'admin', action: 'System Initialization', module: 'System', details: 'Database seeded with default roles and data', status: 'success' },
+        { userName: 'Dr. Rajesh Kumar', userRole: 'tpo', action: 'Placement Drive Review', module: 'Placement Drives', details: 'Reviewed ABC Technologies drive requirements', status: 'success' }
+      ]);
     }
 
     const companies = await Company.find();

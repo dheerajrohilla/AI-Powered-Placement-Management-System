@@ -16,6 +16,8 @@ function Login() {
     companyName: "",
     hrName: "",
     hrEmail: "",
+    employeeId: "",
+    tpoDepartment: "",
     confirmPassword: ""
   });
   const [message, setMessage] = useState("");
@@ -49,9 +51,15 @@ function Login() {
     }
 
     try {
-      const additionalData = role === "student"
-        ? { rollNumber: registerData.rollNumber, department: registerData.department, batch: registerData.batch }
-        : { companyName: registerData.companyName, hrName: registerData.hrName, hrEmail: registerData.hrEmail };
+      let additionalData = {};
+      if (role === "student") {
+        additionalData = { rollNumber: registerData.rollNumber, department: registerData.department, batch: registerData.batch };
+      } else if (role === "company") {
+        additionalData = { companyName: registerData.companyName, hrName: registerData.hrName, hrEmail: registerData.hrEmail };
+      } else if (role === "tpo") {
+        additionalData = { employeeId: registerData.employeeId, department: registerData.tpoDepartment };
+      }
+
       const userData = await register(registerData.name, email, password, role, additionalData);
       navigate(`/${userData.role}`);
     } catch (err) {
@@ -235,16 +243,23 @@ function Login() {
               <select value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value="student">Student</option>
                 <option value="company">Company</option>
+                <option value="tpo">TPO (Placement Officer)</option>
+                <option value="admin">Admin (System Administrator)</option>
               </select>
             </div>
-            {role === "student" ? <>
+            {role === "student" && <>
               <div className="form-group"><label>Roll Number</label><input value={registerData.rollNumber} onChange={(e) => updateRegisterData("rollNumber", e.target.value)} required /></div>
               <div className="form-group"><label>Department</label><input value={registerData.department} onChange={(e) => updateRegisterData("department", e.target.value)} required /></div>
               <div className="form-group"><label>Batch Year</label><input value={registerData.batch} onChange={(e) => updateRegisterData("batch", e.target.value)} required /></div>
-            </> : <>
+            </>}
+            {role === "company" && <>
               <div className="form-group"><label>Company Name</label><input value={registerData.companyName} onChange={(e) => updateRegisterData("companyName", e.target.value)} required /></div>
               <div className="form-group"><label>HR Name</label><input value={registerData.hrName} onChange={(e) => updateRegisterData("hrName", e.target.value)} required /></div>
               <div className="form-group"><label>HR Email</label><input type="email" value={registerData.hrEmail} onChange={(e) => updateRegisterData("hrEmail", e.target.value)} required /></div>
+            </>}
+            {role === "tpo" && <>
+              <div className="form-group"><label>Employee ID</label><input value={registerData.employeeId} onChange={(e) => updateRegisterData("employeeId", e.target.value)} placeholder="e.g. EMP-101" required /></div>
+              <div className="form-group"><label>Department / Cell</label><input value={registerData.tpoDepartment} onChange={(e) => updateRegisterData("tpoDepartment", e.target.value)} placeholder="e.g. Training & Placement Cell" required /></div>
             </>}
             <div className="form-group"><label>Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength="6" required /></div>
             <div className="form-group"><label>Confirm Password</label><input type="password" value={registerData.confirmPassword} onChange={(e) => updateRegisterData("confirmPassword", e.target.value)} minLength="6" required /></div>

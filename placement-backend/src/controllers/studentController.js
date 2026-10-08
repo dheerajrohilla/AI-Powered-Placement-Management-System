@@ -5,9 +5,14 @@ import PlacementDrive from '../models/PlacementDrive.js';
 
 export const getDashboard = async (req, res) => {
   try {
-    const student = await Student.findOne({ userId: req.user.id });
+    let student = await Student.findOne({ userId: req.user.id });
     if (!student) {
-      return res.status(404).json({ error: 'Student profile not found' });
+      student = await Student.create({
+        userId: req.user.id,
+        rollNumber: `ROLL-${Date.now().toString().slice(-6)}`,
+        department: 'General',
+        batch: new Date().getFullYear().toString()
+      });
     }
 
     const applications = await Application.countDocuments({ student: student._id });
@@ -45,7 +50,16 @@ export const getDashboard = async (req, res) => {
 
 export const getProfile = async (req, res) => {
   try {
-    const student = await Student.findOne({ userId: req.user.id }).populate('userId');
+    let student = await Student.findOne({ userId: req.user.id }).populate('userId');
+    if (!student) {
+      const newStudent = await Student.create({
+        userId: req.user.id,
+        rollNumber: `ROLL-${Date.now().toString().slice(-6)}`,
+        department: 'General',
+        batch: new Date().getFullYear().toString()
+      });
+      student = await Student.findById(newStudent._id).populate('userId');
+    }
     res.json(student);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -72,13 +86,14 @@ export const uploadResume = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { bio, skills, department, batch, rollNumber } = req.body;
+    const { bio, skills, department, batch, rollNumber, cgpa } = req.body;
     const allowedUpdates = {};
     if (bio !== undefined) allowedUpdates.bio = bio;
     if (skills !== undefined) allowedUpdates.skills = skills;
     if (department !== undefined) allowedUpdates.department = department;
     if (batch !== undefined) allowedUpdates.batch = batch;
     if (rollNumber !== undefined) allowedUpdates.rollNumber = rollNumber;
+    if (cgpa !== undefined) allowedUpdates.cgpa = Number(cgpa) || 0;
 
     const student = await Student.findOneAndUpdate(
       { userId: req.user.id },
