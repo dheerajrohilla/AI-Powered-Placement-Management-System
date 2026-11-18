@@ -94,7 +94,7 @@ function PlacementJourney() {
             </h3>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {journey.stages.map((stage, idx) => {
+              {journey.stages.map((stage) => {
                 const isCurrent = journey.currentStage?.id === stage.id;
                 const isCompleted = stage.status === "completed";
 

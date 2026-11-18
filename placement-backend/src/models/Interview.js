@@ -17,8 +17,38 @@ const interviewSchema = new mongoose.Schema({
   },
   round: {
     type: String,
-    enum: ['online', 'group discussion', 'technical', 'hr', 'final'],
+    default: 'technical',
     required: true
+  },
+  title: {
+    type: String,
+    default: 'Technical Interview'
+  },
+  roomId: {
+    type: String,
+    index: true,
+    sparse: true
+  },
+  description: {
+    type: String,
+    default: ''
+  },
+  instructions: {
+    type: String,
+    default: ''
+  },
+  scheduledTime: {
+    type: String,
+    default: ''
+  },
+  actualStartTime: {
+    type: Date
+  },
+  actualEndTime: {
+    type: Date
+  },
+  endedBy: {
+    type: String
   },
   activityType: {
     type: String,
@@ -33,17 +63,26 @@ const interviewSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
+  timeZone: {
+    type: String,
+    default: 'Asia/Kolkata'
+  },
+  mode: {
+    type: String,
+    enum: ['virtual', 'in_person', 'telephonic'],
+    default: 'virtual'
+  },
   status: {
     type: String,
-    enum: ['scheduled', 'completed', 'passed', 'failed', 'cancelled'],
+    enum: ['scheduled', 'upcoming', 'waiting', 'in_progress', 'completed', 'passed', 'failed', 'cancelled'],
     default: 'scheduled'
   },
   location: String,
+  joinLink: String,
   interviewer: String,
   interviewerEmail: String,
   feedback: String,
   result: String,
-  joinLink: String,
   createdAt: {
     type: Date,
     default: Date.now

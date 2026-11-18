@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import TPOLayout from "../../layouts/TPOLayout";
-import { tpoAPI } from "../../services/api";
+import { tpoAPI, getAssetUrl } from "../../services/api";
 
 function Applications() {
   const [applications, setApplications] = useState([]);
@@ -9,8 +9,8 @@ function Applications() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [eligibilityFilter, setEligibilityFilter] = useState("All");
 
-  const fetchApplications = () => {
-    setLoading(true);
+  const fetchApplications = (showLoading = false) => {
+    if (showLoading) setLoading(true);
     tpoAPI.getApplications()
       .then((res) => setApplications(res.data || []))
       .catch((err) => console.error("Error loading applications:", err))
@@ -18,14 +18,14 @@ function Applications() {
   };
 
   useEffect(() => {
-    fetchApplications();
+    fetchApplications(false);
   }, []);
 
   const handleStatusChange = async (appId, newStatus) => {
     try {
       await tpoAPI.updateApplicationStatus(appId, newStatus);
-      fetchApplications();
-    } catch (err) {
+      fetchApplications(true);
+    } catch {
       alert("Failed to update application status.");
     }
   };
@@ -139,6 +139,25 @@ function Applications() {
                     <div className="student-name">
                       <strong>{app.student?.userId?.name || 'Student Candidate'}</strong>
                       <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Roll: {app.student?.rollNumber || 'N/A'} • {app.student?.department}</span>
+                      {app.student?.resume && (
+                        <a
+                          href={getAssetUrl(app.student.resume)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '0.8rem',
+                            color: '#2563eb',
+                            fontWeight: 600,
+                            marginTop: '2px',
+                            textDecoration: 'none'
+                          }}
+                        >
+                          📄 View Resume
+                        </a>
+                      )}
                     </div>
                   </td>
                   <td>

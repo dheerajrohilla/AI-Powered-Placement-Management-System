@@ -58,6 +58,10 @@ const mockInterviewSchema = new mongoose.Schema({
     },
     strengths: [String],
     missingPoints: [String],
+    followUpQuestion: {
+      type: String,
+      default: null
+    },
     isAnswered: {
       type: Boolean,
       default: false

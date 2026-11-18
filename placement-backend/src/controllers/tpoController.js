@@ -9,6 +9,7 @@ import Notification from '../models/Notification.js';
 import AuditLog from '../models/AuditLog.js';
 import { buildPlacementReport, attachApplicantCounts } from '../utils/reports.js';
 import { detectPlacementConflicts } from '../utils/conflictDetectorEngine.js';
+import { sendInterviewRescheduledEmail } from '../services/emailService.js';
 
 // Helper for audit logging
 const logAudit = async (user, action, module, details, status = 'success') => {
@@ -57,30 +58,52 @@ export const getProfile = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { name, phone, department, designation, collegeName, officeLocation } = req.body;
+    const { name, phone, department, designation, collegeName, university, officeLocation, employeeId, bio } = req.body;
 
-    if (name || phone) {
+    if (name || phone !== undefined) {
       await User.findByIdAndUpdate(req.user.id, {
-        ...(name && { name }),
-        ...(phone && { phone }),
+        ...(name && { name: name.trim() }),
+        ...(phone !== undefined && { phone: phone.trim() }),
         updatedAt: Date.now()
       });
     }
 
+    const tpoUpdates = {};
+    if (department !== undefined) tpoUpdates.department = department;
+    if (designation !== undefined) tpoUpdates.designation = designation;
+    if (collegeName !== undefined) tpoUpdates.collegeName = collegeName;
+    if (university !== undefined) tpoUpdates.university = university;
+    if (officeLocation !== undefined) tpoUpdates.officeLocation = officeLocation;
+    if (employeeId !== undefined) tpoUpdates.employeeId = employeeId;
+    if (bio !== undefined) tpoUpdates.bio = bio;
+
     const tpo = await TPO.findOneAndUpdate(
       { userId: req.user.id },
-      {
-        ...(department && { department }),
-        ...(designation && { designation }),
-        ...(collegeName && { collegeName }),
-        ...(officeLocation && { officeLocation })
-      },
+      tpoUpdates,
       { new: true, upsert: true }
     );
 
+    const updatedUser = await User.findById(req.user.id).select('-password');
     await logAudit(req.user, 'Update Profile', 'TPO Profile', 'Updated TPO contact and office details');
 
-    res.json({ message: 'Profile updated successfully', tpo });
+    res.json({ message: 'Profile updated successfully', tpo, user: updatedUser });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const uploadProfilePhoto = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Please upload a valid image file (JPG, PNG, WEBP, GIF).' });
+    }
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { profilePicture: avatarUrl },
+      { new: true }
+    ).select('-password');
+    res.json({ message: 'Profile photo updated successfully', profilePicture: avatarUrl, user });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -115,24 +138,44 @@ export const getDashboard = async (req, res) => {
     const totalStudents = await Student.countDocuments();
     const totalCompanies = await Company.countDocuments();
     const totalDrives = await PlacementDrive.countDocuments();
-    const activeDrives = await PlacementDrive.countDocuments({ status: { $in: ['upcoming', 'ongoing'] } });
+    const activeDrives = await PlacementDrive.countDocuments({ status: { $in: ['upcoming', 'ongoing'] }, approvalStatus: 'approved' });
+    const pendingDrives = await PlacementDrive.countDocuments({ approvalStatus: 'pending_approval' });
     const totalApplications = await Application.countDocuments();
-    const shortlistedStudents = await Application.countDocuments({ status: 'shortlisted' });
+    const shortlistedStudents = await Application.countDocuments({ status: { $in: ['shortlisted', 'interview_scheduled'] } });
     const scheduledInterviews = await Interview.countDocuments({ status: 'scheduled' });
     const selectedStudents = await Student.countDocuments({ isPlaced: true });
 
     const placementRate = totalStudents > 0 ? ((selectedStudents / totalStudents) * 100).toFixed(1) : 0;
+
+    // Department-wise distribution
+    const deptStats = await Student.aggregate([
+      {
+        $group: {
+          _id: '$department',
+          total: { $sum: 1 },
+          placed: { $sum: { $cond: ['$isPlaced', 1, 0] } }
+        }
+      }
+    ]);
+
+    // Top pending drives awaiting approval
+    const pendingDriveList = await PlacementDrive.find({ approvalStatus: 'pending_approval' })
+      .populate('company', 'companyName location')
+      .limit(5);
 
     res.json({
       totalStudents,
       totalCompanies,
       totalDrives,
       activeDrives,
+      pendingDrives,
       totalApplications,
       shortlistedStudents,
       scheduledInterviews,
       selectedStudents,
-      placementRate
+      placementRate,
+      deptStats,
+      pendingDriveList
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -288,6 +331,134 @@ export const toggleDriveStatus = async (req, res) => {
     const drive = await PlacementDrive.findByIdAndUpdate(driveId, { status }, { new: true });
     await logAudit(req.user, 'Change Drive Status', 'Drive Management', `Drive status changed to ${status}`);
     res.json(drive);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getPendingDrives = async (req, res) => {
+  try {
+    const drives = await PlacementDrive.find({ approvalStatus: 'pending_approval' })
+      .populate('company')
+      .sort({ createdAt: -1 });
+    res.json(drives);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const approveDrive = async (req, res) => {
+  try {
+    const { driveId } = req.params;
+    const { feedback } = req.body;
+    const drive = await PlacementDrive.findByIdAndUpdate(
+      driveId,
+      {
+        approvalStatus: 'approved',
+        approvalFeedback: feedback || 'Approved by Placement Cell for campus recruitment.',
+        isPublished: true,
+        approvedBy: req.user._id,
+        approvedAt: new Date()
+      },
+      { new: true }
+    ).populate('company');
+
+    if (!drive) return res.status(404).json({ error: 'Placement drive not found' });
+
+    // Notify company recruiter
+    if (drive.company?.userId) {
+      await Notification.create({
+        recipientUser: drive.company.userId,
+        recipientRole: 'company',
+        title: 'Placement Drive Approved! 🎉',
+        message: `Your drive "${drive.title || drive.jobRole}" has been approved by the TPO and published for students.`,
+        type: 'success',
+        link: '/company/drives'
+      });
+    }
+
+    // Broadcast notification to eligible students
+    await Notification.create({
+      recipientRole: 'student',
+      title: 'New Placement Drive Approved',
+      message: `${drive.company?.companyName || 'Recruiter'} has an approved drive for ${drive.jobRole || drive.title}! Check eligibility and apply.`,
+      type: 'info',
+      link: '/student/jobs'
+    });
+
+    await logAudit(req.user, 'Approve Placement Drive', 'TPO Approvals', `Approved drive "${drive.title}" (${drive._id})`);
+
+    res.json({ message: 'Drive approved and published successfully.', drive });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const rejectDrive = async (req, res) => {
+  try {
+    const { driveId } = req.params;
+    const { feedback } = req.body;
+    const drive = await PlacementDrive.findByIdAndUpdate(
+      driveId,
+      {
+        approvalStatus: 'rejected',
+        approvalFeedback: feedback || 'Drive proposal rejected by TPO.',
+        isPublished: false
+      },
+      { new: true }
+    ).populate('company');
+
+    if (!drive) return res.status(404).json({ error: 'Placement drive not found' });
+
+    if (drive.company?.userId) {
+      await Notification.create({
+        recipientUser: drive.company.userId,
+        recipientRole: 'company',
+        title: 'Placement Drive Not Approved',
+        message: `Your drive "${drive.title || drive.jobRole}" was rejected: ${feedback || 'Does not meet current campus placement criteria.'}`,
+        type: 'warning',
+        link: '/company/drives'
+      });
+    }
+
+    await logAudit(req.user, 'Reject Placement Drive', 'TPO Approvals', `Rejected drive "${drive.title}" (${drive._id})`);
+
+    res.json({ message: 'Drive rejected.', drive });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const requestDriveChanges = async (req, res) => {
+  try {
+    const { driveId } = req.params;
+    const { feedback } = req.body;
+    const drive = await PlacementDrive.findByIdAndUpdate(
+      driveId,
+      {
+        approvalStatus: 'changes_requested',
+        approvalFeedback: feedback || 'Please update eligibility or salary criteria before re-submitting.',
+        isPublished: false
+      },
+      { new: true }
+    ).populate('company');
+
+    if (!drive) return res.status(404).json({ error: 'Placement drive not found' });
+
+    if (drive.company?.userId) {
+      await Notification.create({
+        recipientUser: drive.company.userId,
+        recipientRole: 'company',
+        title: 'Changes Requested on Placement Drive',
+        message: `The TPO requested updates on "${drive.title}": ${feedback || 'Please review criteria.'}`,
+        type: 'warning',
+        link: '/company/drives'
+      });
+    }
+
+    await logAudit(req.user, 'Request Drive Changes', 'TPO Approvals', `Requested changes on drive "${drive.title}"`);
+
+    res.json({ message: 'Requested changes from company recruiter.', drive });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -500,6 +671,25 @@ export const resolveConflictSlot = async (req, res) => {
         message: `Your ${interview.round} interview with ${interview.company?.companyName} was rescheduled to ${new Date(newScheduledDate).toLocaleString()} to resolve a timing clash.`,
         type: 'info'
       });
+
+      // Dispatch dynamic HTML interview rescheduled email to student's registered email
+      if (interview.student.userId.email) {
+        await sendInterviewRescheduledEmail({
+          to: interview.student.userId.email,
+          studentName: interview.student.userId.name || 'Candidate',
+          companyName: interview.company?.companyName || 'Company',
+          role: 'Placement Interview Candidate',
+          round: interview.round || 'Technical Round',
+          oldDate,
+          newDate: newScheduledDate,
+          timeZone: interview.timeZone || 'Asia/Kolkata',
+          reason: reason || 'Rescheduled by Placement Officer to avoid schedule overlap',
+          mode: interview.mode || 'virtual',
+          joinLink: interview.joinLink || '',
+          location: interview.location || '',
+          interviewId: interview._id
+        });
+      }
     }
 
     res.json({

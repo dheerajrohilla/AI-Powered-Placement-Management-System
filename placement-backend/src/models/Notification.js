@@ -11,6 +11,11 @@ const notificationSchema = new mongoose.Schema({
     ref: 'User',
     default: null
   },
+  recipientUser: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
   title: {
     type: String,
     required: true
@@ -21,7 +26,7 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['info', 'success', 'warning', 'alert'],
+    enum: ['info', 'success', 'warning', 'alert', 'interview', 'update'],
     default: 'info'
   },
   isRead: {

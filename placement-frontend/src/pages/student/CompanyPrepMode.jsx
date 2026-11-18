@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../../layouts/DashboardLayout";
 import { studentAPI } from "../../services/api";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 
 function CompanyPrepMode() {
   const { driveId } = useParams();
-  const navigate = useNavigate();
 
   const [drives, setDrives] = useState([]);
   const [selectedDriveId, setSelectedDriveId] = useState(driveId || "");
@@ -15,37 +14,29 @@ function CompanyPrepMode() {
 
   // Fetch drives list
   useEffect(() => {
-    const fetchDrives = async () => {
-      try {
-        const res = await studentAPI.getPlacementDrives();
-        setDrives(res.data || []);
-        if (!selectedDriveId && res.data?.length > 0) {
-          setSelectedDriveId(res.data[0]._id);
+    studentAPI.getPlacementDrives()
+      .then((res) => {
+        const driveList = res.data || [];
+        setDrives(driveList);
+        if (!driveId && driveList.length > 0) {
+          setSelectedDriveId(driveList[0]._id);
         }
-      } catch (err) {
-        console.error("Failed to load drives:", err);
-      }
-    };
-    fetchDrives();
-  }, []);
+      })
+      .catch((err) => console.error("Failed to load drives:", err));
+  }, [driveId]);
 
   // Fetch prep plan when selectedDriveId changes
   useEffect(() => {
-    if (!selectedDriveId && drives.length === 0) return;
-    const fetchPlan = async () => {
-      try {
-        setLoading(true);
-        const res = await studentAPI.getCompanyPrepMode(selectedDriveId || "default");
+    const targetId = selectedDriveId || driveId || "default";
+    setLoading(true);
+    studentAPI.getCompanyPrepMode(targetId)
+      .then((res) => {
         setPrepData(res.data);
-        setChecklist(res.data.readinessChecklist || []);
-      } catch (err) {
-        console.error("Failed to load company prep mode:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPlan();
-  }, [selectedDriveId]);
+        setChecklist(res.data?.readinessChecklist || []);
+      })
+      .catch((err) => console.error("Failed to load company prep mode:", err))
+      .finally(() => setLoading(false));
+  }, [selectedDriveId, driveId]);
 
   const toggleChecklistItem = (id) => {
     setChecklist(prev => prev.map(item => item.id === id ? { ...item, completed: !item.completed } : item));
@@ -126,13 +117,13 @@ function CompanyPrepMode() {
           </div>
 
           {/* Quick Launch Action Button */}
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", flexWrap: "wrap" }}>
             <Link
-              to={`/student/mock-interview?driveId=${prepData.driveId}`}
-              className="btn-primary"
-              style={{ padding: "12px 24px", fontSize: "15px", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "8px" }}
+              to={`/student/mock-interview?company=${encodeURIComponent(prepData.companyName)}&category=company_specific`}
+              className="ai-btn-primary"
+              style={{ padding: "12px 24px", fontSize: "15px", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "8px", borderRadius: "8px" }}
             >
-              🎙️ Launch {prepData.companyName} AI Mock Interview →
+              🚀 Start Verified {prepData.companyName} AI Assessment →
             </Link>
           </div>
 

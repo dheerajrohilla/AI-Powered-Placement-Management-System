@@ -22,8 +22,66 @@ const studentSchema = new mongoose.Schema({
   },
   cgpa: {
     type: Number,
-    default: 0
+    default: 0,
+    min: 0,
+    max: 10
   },
+  phone: {
+    type: String,
+    default: ''
+  },
+  dob: {
+    type: String,
+    default: ''
+  },
+  gender: {
+    type: String,
+    default: ''
+  },
+  address: {
+    type: String,
+    default: ''
+  },
+  city: {
+    type: String,
+    default: ''
+  },
+  state: {
+    type: String,
+    default: ''
+  },
+  country: {
+    type: String,
+    default: 'India'
+  },
+  university: {
+    type: String,
+    default: 'National Institute of Technology'
+  },
+  campus: {
+    type: String,
+    default: 'Main Campus'
+  },
+  degree: {
+    type: String,
+    default: 'Bachelor of Technology'
+  },
+  currentSemester: {
+    type: String,
+    default: '7th Semester'
+  },
+  activeBacklogs: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  programmingLanguages: [String],
+  careerObjective: {
+    type: String,
+    default: ''
+  },
+  preferredRoles: [String],
+  preferredLocations: [String],
   resume: {
     type: String,
     default: null
@@ -62,6 +120,31 @@ const studentSchema = new mongoose.Schema({
   resumeParsedText: {
     type: String,
     default: ''
+  },
+  resumeVersion: {
+    type: Number,
+    default: 0
+  },
+  resumeProcessingStatus: {
+    type: String,
+    enum: ['idle', 'processing', 'completed', 'failed', 'rejected'],
+    default: 'idle'
+  },
+  resumeProcessingError: {
+    type: String,
+    default: null
+  },
+  resumeMetadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  extractedSkills: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  lastSkillSyncAt: {
+    type: Date,
+    default: null
   },
   resumeAnalysis: {
     type: mongoose.Schema.Types.Mixed,

@@ -8,9 +8,9 @@ function PlacementConflicts() {
   const [resolvingId, setResolvingId] = useState(null);
   const [successMsg, setSuccessMsg] = useState("");
 
-  const fetchConflicts = async () => {
+  const fetchConflicts = async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const res = await tpoAPI.getPlacementConflicts();
       setConflictData(res.data);
     } catch (err) {
@@ -21,7 +21,7 @@ function PlacementConflicts() {
   };
 
   useEffect(() => {
-    fetchConflicts();
+    fetchConflicts(false);
   }, []);
 
   const handleResolveSlot = async (conflict, slot) => {

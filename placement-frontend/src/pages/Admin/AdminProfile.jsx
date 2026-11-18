@@ -86,6 +86,16 @@ function AdminProfile() {
 
   const initial = formData.name ? formData.name.charAt(0).toUpperCase() : "A";
 
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+          <p>Loading administrator profile...</p>
+        </div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
       <div className="profile-page">

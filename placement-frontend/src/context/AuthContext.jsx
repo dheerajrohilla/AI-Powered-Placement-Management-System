@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { authAPI } from '../services/api';
 import { AuthContext } from './authContextValue';
+export { useAuth } from './useAuth';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
@@ -72,6 +73,11 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    try {
+      sessionStorage.clear();
+    } catch {
+      // Ignore if sessionStorage restricted
+    }
     setToken(null);
     setUser(null);
     setError(null);

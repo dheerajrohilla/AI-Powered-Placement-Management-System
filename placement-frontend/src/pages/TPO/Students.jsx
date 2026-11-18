@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import TPOLayout from "../../layouts/TPOLayout";
-import { tpoAPI } from "../../services/api";
+import { tpoAPI, getAssetUrl } from "../../services/api";
 
 function Students() {
   const [students, setStudents] = useState([]);
@@ -254,6 +254,34 @@ function Students() {
                   {selectedStudent.socialLinks.linkedin && <a href={selectedStudent.socialLinks.linkedin} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>👔 LinkedIn</a>}
                   {selectedStudent.socialLinks.leetcode && <a href={selectedStudent.socialLinks.leetcode} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>⚡ LeetCode</a>}
                 </div>
+              </div>
+            )}
+
+            {selectedStudent.resume && (
+              <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                <div>
+                  <strong style={{ color: '#166534', fontSize: '0.9rem', display: 'block' }}>📄 Uploaded Student Resume</strong>
+                  <span style={{ color: '#15803d', fontSize: '0.8rem' }}>Official PDF resume available for verification</span>
+                </div>
+                <a
+                  href={getAssetUrl(selectedStudent.resume)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    background: '#16a34a',
+                    color: '#ffffff',
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  👁️ View Resume PDF
+                </a>
               </div>
             )}
 

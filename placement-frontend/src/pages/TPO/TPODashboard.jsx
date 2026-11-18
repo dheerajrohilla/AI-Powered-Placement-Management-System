@@ -127,9 +127,54 @@ function TPODashboard() {
 
         </div>
 
+        {/* PENDING DRIVE APPROVALS ALERT */}
+        {stats?.pendingDrives > 0 && (
+          <div style={{
+            marginTop: '20px',
+            padding: '18px 24px',
+            borderRadius: '12px',
+            background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
+            color: '#ffffff',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '16px',
+            boxShadow: '0 4px 14px rgba(29, 78, 216, 0.25)'
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '20px' }}>⚡</span>
+                <h3 style={{ fontSize: '17px', fontWeight: '800', color: '#ffffff', margin: 0 }}>
+                  {stats.pendingDrives} Placement {stats.pendingDrives === 1 ? 'Drive' : 'Drives'} Awaiting TPO Verification
+                </h3>
+              </div>
+              <p style={{ fontSize: '13.5px', color: '#bfdbfe', margin: 0 }}>
+                Recruiter companies have submitted placement drives. Review eligibility criteria and approve to publish for students.
+              </p>
+            </div>
+
+            <button
+              onClick={() => navigate('/tpo/drives')}
+              style={{
+                background: '#ffffff',
+                color: '#1d4ed8',
+                border: 'none',
+                padding: '9px 18px',
+                borderRadius: '8px',
+                fontWeight: '700',
+                fontSize: '13.5px',
+                cursor: 'pointer'
+              }}
+            >
+              Open Approvals Queue ({stats.pendingDrives}) →
+            </button>
+          </div>
+        )}
+
         {/* PLACEMENT ACTIVITY CONFLICT SCANNER ALERT */}
         <div style={{
-          marginTop: '24px',
+          marginTop: '20px',
           padding: '20px 24px',
           borderRadius: '12px',
           background: 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)',

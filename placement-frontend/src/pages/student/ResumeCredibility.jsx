@@ -11,8 +11,9 @@ function ResumeCredibility() {
 
   const fetchCredibility = async (isManual = false) => {
     try {
-      if (isManual) setRefreshing(true);
-      else setLoading(true);
+      if (isManual) {
+        setRefreshing(true);
+      }
       const res = await studentAPI.getCredibilityAnalysis();
       setData(res.data);
       setError(null);
@@ -26,7 +27,7 @@ function ResumeCredibility() {
   };
 
   useEffect(() => {
-    fetchCredibility();
+    fetchCredibility(false);
   }, []);
 
   const getSeverityBadge = (severity) => {

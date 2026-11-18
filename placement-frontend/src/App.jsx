@@ -21,14 +21,19 @@ import RejectionAnalyzer from "./pages/student/RejectionAnalyzer";
 import CompanyPrepMode from "./pages/student/CompanyPrepMode";
 import PeerBenchmarking from "./pages/student/PeerBenchmarking";
 import StudentCollaboration from "./pages/student/StudentCollaboration";
+import StudyMaterialHub from "./pages/student/StudyMaterialHub";
+import QuizHub from "./pages/student/QuizHub";
 
 // ================= COMPANY PAGES =================
+import VirtualInterviewRoom from "./pages/InterviewRoom/VirtualInterviewRoom";
 import CompanyDashboard from "./pages/Company/CompanyDashboard";
+import CompanyProfile from "./pages/Company/CompanyProfile";
 import CreateDrive from "./pages/Company/CreateDrive";
 import CompanyDrives from "./pages/Company/CompanyDrives";
 import Applicants from "./pages/Company/Applicants";
 import Shortlisted from "./pages/Company/Shortlisted";
 import CompanyInterviews from "./pages/Company/Interviews";
+import CompanyNotifications from "./pages/Company/CompanyNotifications";
 
 // ================= TPO PAGES =================
 import TPODashboard from "./pages/TPO/TPODashboard";
@@ -69,26 +74,37 @@ function App() {
         <Route path="/student/applications" element={<ProtectedRoute allowedRoles={['student']}><Applications /></ProtectedRoute>} />
         <Route path="/student/interviews" element={<ProtectedRoute allowedRoles={['student']}><StudentInterviews /></ProtectedRoute>} />
         <Route path="/student/ats" element={<ProtectedRoute allowedRoles={['student']}><AIResumeAnalysis /></ProtectedRoute>} />
+        <Route path="/student/ats-analysis" element={<ProtectedRoute allowedRoles={['student']}><AIResumeAnalysis /></ProtectedRoute>} />
         <Route path="/student/skills" element={<ProtectedRoute allowedRoles={['student']}><SkillAnalysis /></ProtectedRoute>} />
+        <Route path="/student/skill-analysis" element={<ProtectedRoute allowedRoles={['student']}><SkillAnalysis /></ProtectedRoute>} />
         <Route path="/student/chatbot" element={<ProtectedRoute allowedRoles={['student']}><ChatbotPage /></ProtectedRoute>} />
 
         {/* 8 Innovative Features */}
         <Route path="/student/credibility" element={<ProtectedRoute allowedRoles={['student']}><ResumeCredibility /></ProtectedRoute>} />
         <Route path="/student/mock-interview" element={<ProtectedRoute allowedRoles={['student']}><MockInterview /></ProtectedRoute>} />
+        <Route path="/student/ai-prep" element={<ProtectedRoute allowedRoles={['student']}><MockInterview /></ProtectedRoute>} />
         <Route path="/student/journey" element={<ProtectedRoute allowedRoles={['student']}><PlacementJourney /></ProtectedRoute>} />
         <Route path="/student/rejection-analyzer" element={<ProtectedRoute allowedRoles={['student']}><RejectionAnalyzer /></ProtectedRoute>} />
         <Route path="/student/company-prep" element={<ProtectedRoute allowedRoles={['student']}><CompanyPrepMode /></ProtectedRoute>} />
         <Route path="/student/company-prep/:driveId" element={<ProtectedRoute allowedRoles={['student']}><CompanyPrepMode /></ProtectedRoute>} />
         <Route path="/student/benchmarking" element={<ProtectedRoute allowedRoles={['student']}><PeerBenchmarking /></ProtectedRoute>} />
         <Route path="/student/collaborate" element={<ProtectedRoute allowedRoles={['student']}><StudentCollaboration /></ProtectedRoute>} />
+        <Route path="/student/collaboration" element={<ProtectedRoute allowedRoles={['student']}><StudentCollaboration /></ProtectedRoute>} />
+        <Route path="/student/study-material" element={<ProtectedRoute allowedRoles={['student']}><StudyMaterialHub /></ProtectedRoute>} />
+        <Route path="/student/study-material/:subjectId" element={<ProtectedRoute allowedRoles={['student']}><StudyMaterialHub /></ProtectedRoute>} />
+        <Route path="/student/study-material/:subjectId/:fileId" element={<ProtectedRoute allowedRoles={['student']}><StudyMaterialHub /></ProtectedRoute>} />
+        <Route path="/student/quiz" element={<ProtectedRoute allowedRoles={['student']}><QuizHub /></ProtectedRoute>} />
+        <Route path="/student/assessment" element={<ProtectedRoute allowedRoles={['student']}><QuizHub /></ProtectedRoute>} />
 
         {/* ================= COMPANY ROUTES ================= */}
         <Route path="/company" element={<ProtectedRoute allowedRoles={['company']}><CompanyDashboard /></ProtectedRoute>} />
+        <Route path="/company/profile" element={<ProtectedRoute allowedRoles={['company']}><CompanyProfile /></ProtectedRoute>} />
         <Route path="/company/create-drive" element={<ProtectedRoute allowedRoles={['company']}><CreateDrive /></ProtectedRoute>} />
         <Route path="/company/drives" element={<ProtectedRoute allowedRoles={['company']}><CompanyDrives /></ProtectedRoute>} />
         <Route path="/company/applicants" element={<ProtectedRoute allowedRoles={['company']}><Applicants /></ProtectedRoute>} />
         <Route path="/company/shortlisted" element={<ProtectedRoute allowedRoles={['company']}><Shortlisted /></ProtectedRoute>} />
         <Route path="/company/interviews" element={<ProtectedRoute allowedRoles={['company']}><CompanyInterviews /></ProtectedRoute>} />
+        <Route path="/company/notifications" element={<ProtectedRoute allowedRoles={['company']}><CompanyNotifications /></ProtectedRoute>} />
 
         {/* ================= TPO ROUTES ================= */}
         <Route path="/tpo" element={<ProtectedRoute allowedRoles={['tpo', 'admin']}><TPODashboard /></ProtectedRoute>} />
@@ -114,6 +130,16 @@ function App() {
         <Route path="/admin/monitoring" element={<ProtectedRoute allowedRoles={['admin']}><AdminMonitoring /></ProtectedRoute>} />
         <Route path="/admin/analytics" element={<ProtectedRoute allowedRoles={['admin']}><AdminAnalytics /></ProtectedRoute>} />
         <Route path="/admin/notifications" element={<ProtectedRoute allowedRoles={['admin']}><AdminNotifications /></ProtectedRoute>} />
+
+        {/* ================= VIRTUAL INTERVIEW ROOM ROUTE ================= */}
+        <Route
+          path="/interview/room/:interviewId"
+          element={
+            <ProtectedRoute allowedRoles={['student', 'company', 'tpo', 'admin']}>
+              <VirtualInterviewRoom />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

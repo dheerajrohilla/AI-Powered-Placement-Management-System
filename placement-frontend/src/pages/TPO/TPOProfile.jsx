@@ -97,6 +97,16 @@ function TPOProfile() {
 
   const initial = formData.name ? formData.name.charAt(0).toUpperCase() : "T";
 
+  if (loading) {
+    return (
+      <TPOLayout>
+        <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+          <p>Loading officer profile...</p>
+        </div>
+      </TPOLayout>
+    );
+  }
+
   return (
     <TPOLayout>
       <div className="profile-page">

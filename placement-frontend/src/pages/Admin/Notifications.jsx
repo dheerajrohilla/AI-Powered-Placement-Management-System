@@ -7,8 +7,8 @@ function Notifications() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
 
-  const fetchNotifications = () => {
-    setLoading(true);
+  const fetchNotifications = (showLoading = false) => {
+    if (showLoading) setLoading(true);
     adminAPI.getNotifications()
       .then((res) => setNotifications(res.data || []))
       .catch((err) => console.error("Error loading notifications:", err))
@@ -16,7 +16,7 @@ function Notifications() {
   };
 
   useEffect(() => {
-    fetchNotifications();
+    fetchNotifications(false);
   }, []);
 
   const handleMarkRead = async (id) => {

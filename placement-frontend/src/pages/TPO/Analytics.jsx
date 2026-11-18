@@ -51,6 +51,16 @@ function Analytics() {
   const shortlisted = analytics?.totalShortlisted || 85;
   const selected = analytics?.totalPlaced || placedStudents;
 
+  if (loading) {
+    return (
+      <TPOLayout>
+        <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+          <p>Loading placement analytics...</p>
+        </div>
+      </TPOLayout>
+    );
+  }
+
   return (
     <TPOLayout>
       <div className="company-heading">

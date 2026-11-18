@@ -6,7 +6,10 @@
     "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm --prefix placement-backend run dev\" \"npm --prefix placement-frontend run dev\"",
     "dev:backend": "npm --prefix placement-backend run dev",
     "dev:frontend": "npm --prefix placement-frontend run dev",
-    "seed": "npm --prefix placement-backend run seed"
+    "seed": "npm --prefix placement-backend run seed",
+    "test": "npm --prefix placement-backend test",
+    "lint": "npm --prefix placement-frontend run lint",
+    "build": "npm --prefix placement-frontend run build"
   },
   "dependencies": {
     "lucide-react": "^1.40.0",

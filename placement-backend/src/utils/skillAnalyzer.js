@@ -7,7 +7,23 @@ import { SKILL_CATEGORIES, ROLE_PROFILES } from './skillTaxonomy.js';
  */
 export const extractCategorizedSkills = (resumeText = '') => {
   const text = (resumeText || '').trim();
-  const lowerText = text.toLowerCase();
+  if (!text) {
+    return {
+      categorized: {
+        languages: [],
+        frontend: [],
+        backend: [],
+        databases: [],
+        cloudDevops: [],
+        aiMlData: [],
+        coreCs: [],
+        tools: []
+      },
+      allSkills: [],
+      evidence: {},
+      totalCount: 0
+    };
+  }
 
   const categorized = {
     languages: [],
@@ -21,20 +37,32 @@ export const extractCategorizedSkills = (resumeText = '') => {
   };
 
   const allSkills = [];
+  const evidence = {};
 
   for (const [catKey, category] of Object.entries(SKILL_CATEGORIES)) {
     for (const skill of category.skills) {
       let isMatch = false;
+      let matchSnippet = '';
 
       if (skill.regex) {
-        isMatch = skill.regex.test(text);
+        const m = skill.regex.exec(text);
+        if (m) {
+          isMatch = true;
+          const start = Math.max(0, m.index - 30);
+          const end = Math.min(text.length, m.index + m[0].length + 40);
+          matchSnippet = text.slice(start, end).replace(/\s+/g, ' ').trim();
+        }
       } else {
         const patterns = skill.aliases || [skill.name.toLowerCase()];
         for (const pattern of patterns) {
           const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const regex = new RegExp(`\\b${escaped}\\b`, 'i');
-          if (regex.test(text)) {
+          const m = regex.exec(text);
+          if (m) {
             isMatch = true;
+            const start = Math.max(0, m.index - 30);
+            const end = Math.min(text.length, m.index + m[0].length + 40);
+            matchSnippet = text.slice(start, end).replace(/\s+/g, ' ').trim();
             break;
           }
         }
@@ -47,6 +75,9 @@ export const extractCategorizedSkills = (resumeText = '') => {
         if (!allSkills.includes(skill.name)) {
           allSkills.push(skill.name);
         }
+        if (matchSnippet && !evidence[skill.name]) {
+          evidence[skill.name] = matchSnippet;
+        }
       }
     }
   }
@@ -54,6 +85,8 @@ export const extractCategorizedSkills = (resumeText = '') => {
   return {
     categorized,
     allSkills,
+    detectedSkills: allSkills,
+    evidence,
     totalCount: allSkills.length
   };
 };
@@ -63,7 +96,23 @@ export const extractCategorizedSkills = (resumeText = '') => {
  * @param {string[]} extractedSkills - List of skill names found in resume
  */
 export const calculateRoleReadiness = (extractedSkills = []) => {
-  const skillsSet = new Set((extractedSkills || []).map(s => s.toLowerCase()));
+  const safeSkills = (extractedSkills || []).filter(Boolean);
+  const skillsSet = new Set(safeSkills.map(s => s.toLowerCase().trim()));
+
+  if (safeSkills.length === 0) {
+    return ROLE_PROFILES.map(profile => ({
+      role: profile.role,
+      description: profile.description,
+      readinessScore: 0,
+      matchedSkills: [],
+      missingSkills: Object.keys(profile.weightings),
+      recommendedNextSkills: Object.entries(profile.weightings)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([name]) => name),
+      isTopMatch: false
+    }));
+  }
 
   return ROLE_PROFILES.map(profile => {
     let earnedWeight = 0;
@@ -83,16 +132,22 @@ export const calculateRoleReadiness = (extractedSkills = []) => {
 
     const readinessScore = Math.min(100, Math.round((earnedWeight / (totalWeight || 1)) * 100));
 
+    // Recommend top missing skills with highest weight
+    const recommendedNextSkills = missing
+      .sort((a, b) => (profile.weightings[b] || 0) - (profile.weightings[a] || 0))
+      .slice(0, 3);
+
     return {
       role: profile.role,
       description: profile.description,
       readinessScore,
       matchedSkills: matched,
       missingSkills: missing,
+      recommendedNextSkills,
       isTopMatch: false
     };
   }).sort((a, b) => b.readinessScore - a.readinessScore)
-    .map((item, idx) => ({ ...item, isTopMatch: idx === 0 }));
+    .map((item, idx) => ({ ...item, isTopMatch: idx === 0 && item.readinessScore > 0 }));
 };
 
 /**

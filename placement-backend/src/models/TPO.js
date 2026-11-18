@@ -32,6 +32,14 @@ const tpoSchema = new mongoose.Schema({
     type: String,
     default: 'Placement Cell, Main Block'
   },
+  university: {
+    type: String,
+    default: 'National Institute of Technology'
+  },
+  bio: {
+    type: String,
+    default: ''
+  },
   permissions: [{
     type: String
   }],

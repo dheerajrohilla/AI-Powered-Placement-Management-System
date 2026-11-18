@@ -1,5 +1,5 @@
 process.env.NODE_ENV = 'test';
-process.env.MONGODB_URI = process.env.MONGODB_URI_TEST || 'mongodb://localhost:27017/placement-db-test';
+process.env.MONGODB_URI = process.env.MONGODB_URI_TEST || 'mongodb://localhost:27017/placement-db-test-auth';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

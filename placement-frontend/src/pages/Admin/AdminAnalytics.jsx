@@ -22,6 +22,16 @@ function AdminAnalytics() {
 
   const totalUsers = roleCounts.reduce((sum, r) => sum + r.count, 0);
 
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+          <p>Loading platform analytics...</p>
+        </div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
       <div className="company-heading">

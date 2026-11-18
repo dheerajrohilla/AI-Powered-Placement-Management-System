@@ -4,6 +4,7 @@ import Student from '../models/Student.js';
 import Company from '../models/Company.js';
 import TPO from '../models/TPO.js';
 import jwt from 'jsonwebtoken';
+import { sendPasswordResetOtpEmail } from '../services/emailService.js';
 
 const signToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, {
@@ -15,9 +16,11 @@ export const register = async (req, res) => {
   try {
     const { name, email, password, role, additionalData } = req.body;
 
-    const allowedRoles = ['student', 'company', 'tpo', 'admin'];
+    const allowedRoles = ['student', 'company'];
     if (!allowedRoles.includes(role)) {
-      return res.status(400).json({ error: 'Invalid registration role.' });
+      return res.status(400).json({
+        error: 'Public registration is only available for student and company roles. Admin and TPO accounts must be provisioned by the system administrator.'
+      });
     }
 
     // Check if user exists
@@ -160,20 +163,71 @@ export const forgotPassword = async (req, res) => {
       return res.status(400).json({ error: 'Please provide your email address.' });
     }
 
-    const user = await User.findOne({ email });
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: cleanEmail });
+
+    // Always respond with identical safe message to prevent email enumeration
+    const genericResponse = {
+      message: 'If an account exists, a 6-digit verification code and reset instructions have been sent to your registered email.'
+    };
 
     if (!user) {
-      return res.json({ message: 'If an account exists, reset instructions will be sent.' });
+      return res.json(genericResponse);
     }
 
+    // Generate secure 6-digit numeric OTP and 32-byte hex token
+    const otp = crypto.randomInt(100000, 999999).toString();
     const resetToken = crypto.randomBytes(32).toString('hex');
+
+    user.passwordResetOtp = crypto.createHash('sha256').update(otp).digest('hex');
     user.passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    user.passwordResetExpires = Date.now() + 60 * 60 * 1000;
+    user.passwordResetExpires = Date.now() + 15 * 60 * 1000; // 15 minutes validity
     await user.save();
 
-    res.json({
-      message: 'If an account exists, reset instructions will be sent.'
-    });
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const resetUrl = `${clientUrl}/login?mode=reset&email=${encodeURIComponent(user.email)}&token=${resetToken}`;
+
+    // Dispatch dynamic HTML email with OTP
+    try {
+      await sendPasswordResetOtpEmail({
+        to: user.email,
+        name: user.name || 'Student / Member',
+        otp,
+        expiresInMinutes: 15,
+        resetUrl
+      });
+    } catch (emailErr) {
+      console.error('[AUTH WARNING] Email dispatch error in forgotPassword:', emailErr.message);
+    }
+
+    res.json(genericResponse);
+  } catch (error) {
+    console.error('[AUTH ERROR] forgotPassword failure:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const verifyResetOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ error: 'Email and 6-digit OTP code are required.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const hashedOtp = crypto.createHash('sha256').update(otp.trim()).digest('hex');
+
+    const user = await User.findOne({
+      email: cleanEmail,
+      passwordResetOtp: hashedOtp,
+      passwordResetExpires: { $gt: Date.now() }
+    }).select('+passwordResetOtp +passwordResetExpires');
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired 6-digit OTP code.' });
+    }
+
+    res.json({ valid: true, message: 'OTP verified successfully.' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -181,30 +235,43 @@ export const forgotPassword = async (req, res) => {
 
 export const resetPassword = async (req, res) => {
   try {
-    const { email, token, password } = req.body;
+    const { email, token, otp, password } = req.body;
 
-    if (!email || !token || !password) {
-      return res.status(400).json({ error: 'Email, token, and new password are required.' });
+    if (!email || (!token && !otp) || !password) {
+      return res.status(400).json({ error: 'Email, verification code/token, and new password are required.' });
     }
 
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-    const user = await User.findOne({
-      email,
-      passwordResetToken: hashedToken,
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const query = {
+      email: cleanEmail,
       passwordResetExpires: { $gt: Date.now() }
-    }).select('+passwordResetToken +passwordResetExpires');
+    };
+
+    if (otp) {
+      query.passwordResetOtp = crypto.createHash('sha256').update(otp.trim()).digest('hex');
+    } else if (token) {
+      query.passwordResetToken = crypto.createHash('sha256').update(token.trim()).digest('hex');
+    }
+
+    const user = await User.findOne(query).select('+passwordResetToken +passwordResetOtp +passwordResetExpires');
 
     if (!user) {
-      return res.status(400).json({ error: 'Invalid or expired reset token.' });
+      return res.status(400).json({ error: 'Invalid or expired verification code / reset token.' });
     }
 
     user.password = password;
     user.passwordResetToken = null;
+    user.passwordResetOtp = null;
     user.passwordResetExpires = null;
     await user.save();
 
-    res.json({ message: 'Password reset successful. You can now log in with your new password.' });
+    res.json({ message: 'Password reset successful! You can now sign in with your new password.' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
+

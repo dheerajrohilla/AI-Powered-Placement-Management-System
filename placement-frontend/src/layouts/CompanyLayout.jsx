@@ -1,13 +1,16 @@
+import { useState } from "react";
 import CompanySidebar from "../components/CompanySidebar";
 import CompanyNavbar from "../components/CompanyNavbar";
 
 function CompanyLayout({ children }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   return (
     <div className="dashboard-layout">
-      <CompanySidebar />
+      <CompanySidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
 
       <main className="main-content">
-        <CompanyNavbar />
+        <CompanyNavbar onToggleMenu={() => setMobileOpen(!mobileOpen)} />
 
         <div className="page-content">
           {children}

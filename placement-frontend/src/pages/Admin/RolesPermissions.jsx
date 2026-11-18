@@ -31,6 +31,16 @@ function RolesPermissions() {
     { name: "Platform Monitoring & Audit Logs", rolesAllowed: ["Admin"] }
   ];
 
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+          <p>Loading roles and permissions...</p>
+        </div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
       <div className="company-heading">

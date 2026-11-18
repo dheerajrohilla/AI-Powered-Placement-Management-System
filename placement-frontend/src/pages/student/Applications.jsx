@@ -6,8 +6,10 @@ import { studentAPI } from "../../services/api";
 const statusClass = (status) => {
   switch (status) {
     case "selected": return "status-badge selected";
+    case "interview_scheduled": return "status-badge scheduled";
     case "shortlisted": return "status-badge shortlisted";
     case "rejected": return "status-badge rejected";
+    case "withdrawn": return "status-badge withdrawn";
     default: return "status-badge applied";
   }
 };
@@ -19,6 +21,18 @@ function Applications() {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+
+  const handleWithdraw = async (applicationId) => {
+    if (!window.confirm("Are you sure you want to withdraw this application?")) return;
+    try {
+      await studentAPI.withdrawApplication(applicationId);
+      setApplications((prev) =>
+        prev.map((a) => (a._id === applicationId ? { ...a, status: "withdrawn" } : a))
+      );
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to withdraw application.");
+    }
+  };
 
   useEffect(() => {
     studentAPI.getApplications()
@@ -127,10 +141,27 @@ function Applications() {
                     </div>
                   </div>
 
-                  <div className="application-status">
+                  <div className="application-status" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
                     <span className={statusClass(application.status)}>
-                      {application.status ? application.status.toUpperCase() : "APPLIED"}
+                      {application.status ? application.status.replace("_", " ").toUpperCase() : "APPLIED"}
                     </span>
+                    {["applied", "under_review"].includes(application.status) && (
+                      <button
+                        onClick={() => handleWithdraw(application._id)}
+                        style={{
+                          background: "transparent",
+                          color: "#dc2626",
+                          border: "1px solid #fecaca",
+                          padding: "3px 8px",
+                          borderRadius: "6px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          cursor: "pointer"
+                        }}
+                      >
+                        Withdraw
+                      </button>
+                    )}
                   </div>
 
                 </div>

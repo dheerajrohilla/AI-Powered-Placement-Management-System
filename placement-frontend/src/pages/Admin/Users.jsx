@@ -24,8 +24,8 @@ function Users() {
 
   const [newPassword, setNewPassword] = useState("");
 
-  const fetchUsers = () => {
-    setLoading(true);
+  const fetchUsers = (showLoading = false) => {
+    if (showLoading) setLoading(true);
     adminAPI.getUsers()
       .then((res) => setUsers(res.data || []))
       .catch((err) => console.error("Error loading users:", err))
@@ -33,7 +33,7 @@ function Users() {
   };
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsers(false);
   }, []);
 
   const handleCreateUser = async (e) => {
@@ -54,7 +54,7 @@ function Users() {
       });
       setShowCreateModal(false);
       setCreateForm({ name: "", email: "", password: "", role: "student", rollNumber: "", department: "CSE", companyName: "", employeeId: "" });
-      fetchUsers();
+      fetchUsers(true);
     } catch (err) {
       alert(err.response?.data?.error || "Failed to create user account.");
     } finally {
@@ -65,9 +65,9 @@ function Users() {
   const handleToggleStatus = async (userId, currentActive) => {
     try {
       await adminAPI.toggleUserStatus(userId, !currentActive);
-      fetchUsers();
+      fetchUsers(true);
     } catch (err) {
-      alert("Failed to change account status.");
+      alert(err.response?.data?.error || "Failed to change account status.");
     }
   };
 
@@ -81,7 +81,7 @@ function Users() {
       setShowResetModal(null);
       setNewPassword("");
     } catch (err) {
-      alert("Failed to reset password.");
+      alert(err.response?.data?.error || "Failed to reset password.");
     } finally {
       setSubmitting(false);
     }
@@ -91,9 +91,9 @@ function Users() {
     if (!window.confirm(`Are you sure you want to permanently delete user: ${email}?`)) return;
     try {
       await adminAPI.deleteUser(userId);
-      fetchUsers();
+      fetchUsers(true);
     } catch (err) {
-      alert("Failed to delete user account.");
+      alert(err.response?.data?.error || "Failed to delete user account.");
     }
   };
 

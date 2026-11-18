@@ -11,6 +11,10 @@ const placementDriveSchema = new mongoose.Schema({
     ref: 'Company',
     required: true
   },
+  institution: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Institution'
+  },
   positions: {
     type: Number,
     required: true
@@ -39,6 +43,25 @@ const placementDriveSchema = new mongoose.Schema({
     type: String,
     enum: ['upcoming', 'ongoing', 'completed', 'cancelled'],
     default: 'upcoming'
+  },
+  // TPO Approval Lifecycle
+  approvalStatus: {
+    type: String,
+    enum: ['draft', 'pending_approval', 'approved', 'rejected', 'changes_requested'],
+    default: 'approved' // Default approved for existing drives & backward compatibility, company drives set to pending_approval on submit
+  },
+  approvalFeedback: {
+    type: String,
+    default: ''
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  approvedAt: Date,
+  isPublished: {
+    type: Boolean,
+    default: true
   },
   requirements: [String],
   benefits: [String],

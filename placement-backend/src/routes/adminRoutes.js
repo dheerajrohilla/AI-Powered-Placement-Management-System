@@ -21,7 +21,11 @@ import {
   getInterviews,
   generateReports,
   getNotifications,
-  markNotificationRead
+  markNotificationRead,
+  getEmailDiagnostics,
+  verifyEmailConnection,
+  sendTestEmail,
+  getEmailLogs
 } from '../controllers/adminController.js';
 import { protect, authorize } from '../middleware/auth.js';
 
@@ -65,5 +69,11 @@ router.get('/reports', generateReports);
 // Admin Notifications
 router.get('/notifications', getNotifications);
 router.patch('/notifications/:notificationId/read', markNotificationRead);
+
+// Centralized Email System & Diagnostics
+router.get('/email/diagnostics', getEmailDiagnostics);
+router.get('/email/verify-connection', verifyEmailConnection);
+router.post('/email/test-send', sendTestEmail);
+router.get('/email/logs', getEmailLogs);
 
 export default router;

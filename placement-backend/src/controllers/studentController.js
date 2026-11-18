@@ -7,8 +7,11 @@ import ChatMessage from '../models/ChatMessage.js';
 import MockInterview from '../models/MockInterview.js';
 import StudyCollaboration from '../models/StudyCollaboration.js';
 import Notification from '../models/Notification.js';
+import AssessmentSession from '../models/AssessmentSession.js';
 import { sendApplicationConfirmationEmail, sendEmail, isRealSmtpConfigured } from '../utils/emailService.js';
-import { extractTextFromPDF } from '../utils/resumeParser.js';
+import { extractTextFromPDF, extractTextFromResume } from '../utils/resumeParser.js';
+import { validateResumeContent } from '../utils/resumeValidator.js';
+import ResumeAnalysisRecord from '../models/ResumeAnalysisRecord.js';
 import { analyzeATS, matchResumeWithDrive } from '../utils/atsAnalyzer.js';
 import {
   extractCategorizedSkills,
@@ -28,8 +31,39 @@ import { generateCompanyPrepPlan } from '../utils/companyPrepEngine.js';
 import { calculatePeerBenchmark } from '../utils/peerBenchmarkEngine.js';
 import { findStudyPartnerMatches } from '../utils/studyCollaborationEngine.js';
 import { calculatePlacementJourney } from '../utils/placementJourneyEngine.js';
+import { analyzeResumeWithAI, analyzeShortlistWithAI, checkCredibilityWithAI } from '../services/resumeService.js';
+import { generateInterviewSessionWithAI, evaluateInterviewAnswerWithAI, calculateFinalInterviewReportWithAI } from '../services/interviewService.js';
+import { generateCompanyPrepWithAI } from '../services/companyPrepService.js';
+import { analyzeSkillsWithAI } from '../services/skillAnalysisService.js';
+import { generatePlacementJourneyWithAI } from '../services/placementJourneyService.js';
+import { answerCopilotQuery } from '../services/copilotService.js';
+import { generateDashboardReadinessSummary } from '../services/dashboardSummaryService.js';
+import { summarizeDriveAndAlignment, draftCoverLetterWithAI, draftRecruiterEmailWithAI } from '../services/applicationAssistantService.js';
+import { interpretPeerBenchmarkWithAI, generateCollaborativeExerciseWithAI } from '../services/collaborationService.js';
+import { isGeminiConfigured, getGeminiModel, checkGeminiHealth } from '../config/gemini.js';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const backendRoot = path.resolve(__dirname, '../..');
+
+export const resolveResumePath = (resumePath) => {
+  if (!resumePath) return null;
+  const relPath = resumePath.replace(/^[/\\]+/, '');
+  const candidatePaths = [
+    path.join(backendRoot, relPath),
+    path.join(process.cwd(), relPath),
+    path.join(backendRoot, 'uploads/resumes', path.basename(relPath)),
+    path.join(process.cwd(), 'placement-backend/uploads/resumes', path.basename(relPath)),
+    path.join(process.cwd(), 'uploads/resumes', path.basename(relPath))
+  ];
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return path.join(backendRoot, relPath);
+};
 
 export const getDashboard = async (req, res) => {
   try {
@@ -60,17 +94,54 @@ export const getDashboard = async (req, res) => {
     const profileStrength = Math.min(100, Math.max(student.profileStrength || 0, strengthPoints));
 
     // Real ATS score (from resumeAnalysis if present, or student.atsScore)
-    const atsScore = student.atsScore || (student.resumeAnalysis?.score ?? 0);
+    const isRejected = student.resumeProcessingStatus === 'rejected' ||
+      student.resumeAnalysis?.isValidResume === false;
+    const atsScore = isRejected ? 0 : (student.atsScore || (student.resumeAnalysis?.score ?? 0));
 
     res.json({
       atsScore,
+      isValidResume: !isRejected,
       applications,
       interviews,
       shortlisted,
       profileStrength,
       isPlaced: student.isPlaced,
-      hasResume: Boolean(student.resume)
+      hasResume: Boolean(student.resume),
+      geminiConfigured: isGeminiConfigured(),
+      geminiModel: getGeminiModel(),
+      cgpa: student.cgpa != null && student.cgpa > 0 ? Number(student.cgpa) : 0,
+      cgpaDisplay: student.cgpa != null && student.cgpa > 0 ? Number(student.cgpa).toFixed(2) : 'Not Provided',
+      department: student.department || 'Not Provided',
+      rollNumber: student.rollNumber || 'Not Provided',
+      batch: student.batch || 'Not Provided',
+      activeBacklogs: student.activeBacklogs || 0
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getAiDashboardSummary = async (req, res) => {
+  try {
+    const student = await Student.findOne({ userId: req.user.id });
+    const user = await User.findById(req.user.id);
+    const applications = await Application.find({ student: student?._id });
+    const interviews = await Interview.find({ student: student?._id });
+    const drives = await PlacementDrive.find({ status: { $in: ['upcoming', 'ongoing'] } });
+    const mockInterviews = await MockInterview.find({ student: student?._id });
+    const assessmentSessions = await AssessmentSession.find({ student: student?._id });
+
+    const summary = await generateDashboardReadinessSummary({
+      student: student || {},
+      user: user || {},
+      applications,
+      interviews,
+      drives,
+      mockInterviews,
+      assessmentSessions
+    });
+
+    res.json(summary);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -97,68 +168,255 @@ export const getProfile = async (req, res) => {
 export const uploadResume = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'Please upload a PDF resume' });
+      return res.status(400).json({ error: 'Please upload a PDF (.pdf) or Word (.docx) resume' });
     }
 
     const filePath = req.file.path;
     const resumeUrl = `/uploads/resumes/${req.file.filename}`;
 
-    // Real PDF text extraction
-    let extractedText = '';
-    try {
-      extractedText = await extractTextFromPDF(filePath);
-    } catch (parseError) {
-      console.warn('PDF extraction warning (proceeding with fallback):', parseError.message);
+    const studentDoc = await Student.findOne({ userId: req.user.id });
+    if (!studentDoc) {
+      return res.status(404).json({ error: 'Student profile not found' });
     }
 
-    // Run Real ATS analysis
-    const atsResult = analyzeATS(extractedText);
+    // Versioning: increment version for fresh resume upload
+    const currentVersion = studentDoc.resumeVersion || 0;
+    const newVersion = currentVersion + 1;
+
+    // Real Universal Text Extraction (PDF and DOCX supported)
+    let extractedText = '';
+    try {
+      extractedText = await extractTextFromResume(filePath, req.file.originalname);
+      if (!extractedText || extractedText.trim().length === 0) {
+        throw new Error('Extracted resume text is completely empty. Please verify the file content.');
+      }
+    } catch (parseError) {
+      // Failed extraction must NEVER wipe out a previously valid profile or skills!
+      console.warn('Resume extraction failure:', parseError.message);
+
+      studentDoc.resumeProcessingStatus = 'failed';
+      studentDoc.resumeProcessingError = parseError.message;
+      await studentDoc.save();
+
+      return res.status(400).json({
+        success: false,
+        isValidResume: false,
+        error: `Failed to extract text from document: ${parseError.message}. Please ensure the file is not corrupted, password-protected, or unreadable.`,
+        errorType: 'extraction_failed',
+        retryable: true,
+        previousResumeRetained: Boolean(studentDoc.resumeParsedText)
+      });
+    }
+
+    // Step 2: Content-Based Multi-Signal Resume Validation
+    const validation = validateResumeContent(extractedText, {
+      originalName: req.file.originalname,
+      size: req.file.size,
+      mimeType: req.file.mimetype
+    });
+
+    if (!validation.isValidResume) {
+      // Clean up uploaded invalid file from disk so it does not linger
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (unlinkErr) {
+        console.warn('Failed to clean up rejected resume file:', unlinkErr.message);
+      }
+
+      // Log invalid upload attempt to history
+      try {
+        await ResumeAnalysisRecord.create({
+          student: studentDoc._id,
+          userId: req.user.id,
+          originalFileName: req.file.originalname,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+          documentType: validation.documentType,
+          isValidResume: false,
+          validationConfidence: validation.confidence,
+          rejectionReason: validation.message,
+          version: currentVersion
+        });
+      } catch (logErr) {
+        console.warn('Failed to log invalid resume record:', logErr.message);
+      }
+
+      const hadPreviousResume = Boolean(studentDoc.resume);
+
+      // Only reset the student profile status to rejected if they had no prior valid resume
+      if (!hadPreviousResume) {
+        studentDoc.atsScore = 0;
+        studentDoc.resumeProcessingStatus = 'rejected';
+        studentDoc.resumeProcessingError = validation.message;
+        studentDoc.resumeAnalysis = {
+          score: 0,
+          overallScore: 0,
+          isValidResume: false,
+          grade: 'N/A',
+          statusText: 'Document Validation Failed (Not a Resume)',
+          wordCount: 0,
+          breakdown: {
+            impact: { actionVerbsCount: 0, metricsCount: 0 },
+            contact: { score: 0 },
+            sections: { score: 0 },
+            skills: { score: 0, skills: [] },
+            formatting: { score: 0 }
+          },
+          sectionBreakdown: {
+            contact: { score: 0 },
+            contactInformation: { score: 0 },
+            summary: { score: 0 },
+            professionalSummary: { score: 0 },
+            education: { score: 0 },
+            technicalSkills: { score: 0 },
+            workExperience: { score: 0 },
+            internships: { score: 0 },
+            projects: { score: 0 },
+            certifications: { score: 0 },
+            relevantKeywords: { score: 0 },
+            formatting: { score: 0 },
+            formattingReadability: { score: 0 },
+            atsCompatibility: { score: 0 }
+          }
+        };
+        await studentDoc.save();
+      }
+
+      // Return rejection notification with 422
+      return res.status(422).json({
+        success: false,
+        isValidResume: false,
+        atsScore: hadPreviousResume ? studentDoc.atsScore : 0,
+        score: hadPreviousResume ? studentDoc.atsScore : 0,
+        error: 'The uploaded document does not appear to be a resume. Please upload a valid resume in PDF or DOCX format.',
+        documentType: validation.documentType,
+        confidence: validation.confidence,
+        details: validation.details,
+        negativeSignals: validation.negativeSignals,
+        previousResumeRetained: hadPreviousResume
+      });
+    }
+
+    // Run Real ATS analysis (Gemini AI enhanced with transparent scoring & improvements)
+    let atsResult;
+    try {
+      atsResult = await analyzeResumeWithAI({ resumeText: extractedText });
+    } catch (atsErr) {
+      console.warn('ATS analysis error, falling back to local ATS engine:', atsErr.message);
+      atsResult = analyzeATS(extractedText);
+    }
 
     // Run Real Skill analysis
-    const skillResult = extractCategorizedSkills(extractedText);
-    const roleReadiness = calculateRoleReadiness(skillResult.allSkills);
+    let skillResult;
+    try {
+      skillResult = extractCategorizedSkills(extractedText);
+    } catch (skillErr) {
+      console.warn('Skill extraction warning:', skillErr.message);
+      skillResult = { categorized: {}, allSkills: [], evidence: {} };
+    }
+
+    let roleReadiness = [];
+    try {
+      roleReadiness = calculateRoleReadiness(skillResult.allSkills);
+    } catch (roleErr) {
+      console.warn('Role readiness calculation warning:', roleErr.message);
+    }
 
     // Merge analysis payload
     const fullAnalysis = {
       ...atsResult,
       extractedSkills: skillResult.categorized,
       allExtractedSkills: skillResult.allSkills,
+      evidence: skillResult.evidence,
       roleReadiness,
-      analyzedAt: new Date()
+      analyzedAt: new Date(),
+      version: newVersion
     };
 
     // Calculate updated profile strength
-    const studentDoc = await Student.findOne({ userId: req.user.id });
-    const existingSkills = studentDoc?.skills || [];
-    // Auto-union detected skills with profile skills
-    const combinedSkills = Array.from(new Set([...existingSkills, ...skillResult.allSkills]));
-
     let strengthPoints = 0;
-    if (studentDoc?.department) strengthPoints += 20;
-    if (studentDoc?.batch) strengthPoints += 20;
-    if (combinedSkills.length > 0) strengthPoints += 30;
-    if (studentDoc?.bio) strengthPoints += 15;
+    if (studentDoc.department) strengthPoints += 20;
+    if (studentDoc.batch) strengthPoints += 20;
+    if (skillResult.allSkills.length > 0) strengthPoints += 30;
+    if (studentDoc.bio) strengthPoints += 15;
     strengthPoints += 15; // resume uploaded
 
+    // Transactionally update the student's active resume and skill profile
     const updatedStudent = await Student.findOneAndUpdate(
       { userId: req.user.id },
       {
         resume: resumeUrl,
         resumeParsedText: extractedText,
+        resumeVersion: newVersion,
+        resumeProcessingStatus: 'completed',
+        resumeProcessingError: null,
+        resumeMetadata: {
+          originalName: req.file.originalname,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+          uploadedAt: new Date(),
+          version: newVersion
+        },
+        extractedSkills: {
+          categorized: skillResult.categorized,
+          allSkills: skillResult.allSkills,
+          evidence: skillResult.evidence,
+          extractedAt: new Date()
+        },
+        skills: skillResult.allSkills, // Active verified skills updated authoritatively
+        lastSkillSyncAt: new Date(),
         resumeAnalysis: fullAnalysis,
         atsScore: atsResult.score,
-        skills: combinedSkills,
         profileStrength: Math.min(100, strengthPoints)
       },
       { new: true }
     );
 
+    // Save record to resume analysis history
+    try {
+      await ResumeAnalysisRecord.create({
+        student: updatedStudent._id,
+        userId: req.user.id,
+        originalFileName: req.file.originalname,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+        documentType: 'resume',
+        isValidResume: true,
+        validationConfidence: validation.confidence,
+        atsScore: atsResult.score,
+        grade: fullAnalysis.grade || 'A',
+        statusText: fullAnalysis.statusText || 'Strong ATS Match',
+        scoreBreakdown: fullAnalysis.sectionBreakdown || fullAnalysis.scoreBreakdown || fullAnalysis.breakdown,
+        matchedSkills: skillResult.allSkills,
+        missingSkills: fullAnalysis.missingSkills || [],
+        missingKeywords: fullAnalysis.missingKeywords || [],
+        strengths: fullAnalysis.strengths || [],
+        weaknesses: fullAnalysis.weaknesses || [],
+        improvements: fullAnalysis.improvements || [],
+        formattingIssues: fullAnalysis.formattingIssues || [],
+        isFresherProfile: Boolean(fullAnalysis.isFresherMode),
+        version: newVersion
+      });
+    } catch (recErr) {
+      console.warn('Failed to persist ResumeAnalysisRecord:', recErr.message);
+    }
+
     res.json({
-      message: 'Resume uploaded and analyzed successfully',
+      success: true,
+      isValidResume: true,
+      message: 'Resume uploaded and skills synchronized successfully',
       resume: updatedStudent.resume,
+      resumeUrl: updatedStudent.resume,
+      version: newVersion,
       atsScore: atsResult.score,
       analysis: fullAnalysis,
-      extractedSkills: skillResult,
+      extractedSkills: skillResult.categorized,
+      allExtractedSkills: skillResult.allSkills,
+      profileSkills: updatedStudent.skills,
+      evidence: skillResult.evidence,
+      roleReadiness,
       skillsAdded: skillResult.allSkills.length
     });
   } catch (error) {
@@ -178,32 +436,161 @@ export const getATSAnalysis = async (req, res) => {
 
     let analysis = student.resumeAnalysis;
 
-    // If analysis doesn't exist yet but resume file or parsed text exists, parse now
-    if (!analysis && student.resume) {
-      const fullPath = path.join(process.cwd(), student.resume);
+    // If student has an existing resume file on disk, dynamically verify and re-parse if needed
+    if (student.resume) {
+      const fullPath = resolveResumePath(student.resume);
       if (fs.existsSync(fullPath)) {
         try {
-          const parsed = await extractTextFromPDF(fullPath);
-          const atsResult = analyzeATS(parsed);
-          const skillResult = extractCategorizedSkills(parsed);
-          const roleReadiness = calculateRoleReadiness(skillResult.allSkills);
+          const parsed = student.resumeParsedText || await extractTextFromResume(fullPath, student.resume);
+          const validation = validateResumeContent(parsed);
 
-          analysis = {
-            ...atsResult,
-            extractedSkills: skillResult.categorized,
-            allExtractedSkills: skillResult.allSkills,
-            roleReadiness,
-            analyzedAt: new Date()
-          };
+          if (validation.isValidResume) {
+            // Restore valid status if it was erroneously stuck in rejected or failed state
+            if (student.resumeProcessingStatus === 'rejected' || student.resumeProcessingStatus === 'failed' || !analysis || analysis.isValidResume === false) {
+              student.resumeProcessingStatus = 'completed';
+              student.resumeProcessingError = null;
 
-          student.resumeParsedText = parsed;
-          student.resumeAnalysis = analysis;
-          student.atsScore = atsResult.score;
-          await student.save();
+              let atsResult;
+              try {
+                atsResult = await analyzeResumeWithAI({ resumeText: parsed });
+              } catch (atsErr) {
+                console.warn('ATS AI analysis error, using local analyzer:', atsErr.message);
+                atsResult = analyzeATS(parsed);
+              }
+
+              const skillResult = extractCategorizedSkills(parsed);
+              const roleReadiness = calculateRoleReadiness(skillResult.allSkills);
+
+              analysis = {
+                ...atsResult,
+                extractedSkills: skillResult.categorized,
+                allExtractedSkills: skillResult.allSkills,
+                roleReadiness,
+                analyzedAt: new Date()
+              };
+
+              student.resumeParsedText = parsed;
+              student.resumeAnalysis = analysis;
+              student.atsScore = atsResult.score;
+              if (skillResult.allSkills?.length) {
+                student.skills = skillResult.allSkills;
+              }
+              await student.save();
+            }
+          } else {
+            student.atsScore = 0;
+            student.resumeProcessingStatus = 'rejected';
+            student.resumeProcessingError = validation.message;
+            if (student.resumeAnalysis) {
+              student.resumeAnalysis.score = 0;
+              student.resumeAnalysis.isValidResume = false;
+              student.resumeAnalysis.grade = 'N/A';
+            }
+            await student.save();
+
+            return res.json({
+              hasResume: true,
+              isValidResume: false,
+              resume: student.resume,
+              resumeUrl: student.resume,
+              atsScore: 0,
+              score: 0,
+              documentType: validation.documentType,
+              validationError: {
+                title: 'Document Validation Failed',
+                message: 'The uploaded document does not appear to be a resume. Please upload a valid resume in PDF or DOCX format.',
+                details: validation.details,
+                documentType: validation.documentType
+              },
+              analysis: {
+                score: 0,
+                overallScore: 0,
+                isValidResume: false,
+                grade: 'N/A',
+                statusText: 'Document Validation Failed (Not a Resume)',
+                wordCount: 0,
+                breakdown: {
+                  impact: { actionVerbsCount: 0, metricsCount: 0 },
+                  contact: { score: 0 },
+                  sections: { score: 0 },
+                  skills: { score: 0, skills: [] },
+                  formatting: { score: 0 }
+                },
+                sectionBreakdown: {
+                  contact: { score: 0 },
+                  contactInformation: { score: 0 },
+                  summary: { score: 0 },
+                  professionalSummary: { score: 0 },
+                  education: { score: 0 },
+                  technicalSkills: { score: 0 },
+                  workExperience: { score: 0 },
+                  internships: { score: 0 },
+                  projects: { score: 0 },
+                  certifications: { score: 0 },
+                  relevantKeywords: { score: 0 },
+                  formatting: { score: 0 },
+                  formattingReadability: { score: 0 },
+                  atsCompatibility: { score: 0 }
+                }
+              },
+              driveMatches: [],
+              studentSkills: student.skills || []
+            });
+          }
         } catch (e) {
           console.warn('On-demand PDF analysis warning:', e.message);
         }
       }
+    }
+
+    // If student's current resume failed validation or was rejected, explicitly return 0%
+    if (student.resumeProcessingStatus === 'rejected' || student.resumeAnalysis?.isValidResume === false) {
+      return res.json({
+        hasResume: Boolean(student.resume),
+        isValidResume: false,
+        resume: student.resume,
+        resumeUrl: student.resume,
+        atsScore: 0,
+        score: 0,
+        validationError: {
+          title: 'Document Validation Failed',
+          message: 'The uploaded document does not appear to be a resume. Please upload a valid resume in PDF or DOCX format.',
+          details: student.resumeProcessingError || 'The uploaded file does not contain necessary resume sections (Contact details, Education, Skills, or Projects).'
+        },
+        analysis: {
+          score: 0,
+          overallScore: 0,
+          isValidResume: false,
+          grade: 'N/A',
+          statusText: 'Document Validation Failed (Not a Resume)',
+          wordCount: 0,
+          breakdown: {
+            impact: { actionVerbsCount: 0, metricsCount: 0 },
+            contact: { score: 0 },
+            sections: { score: 0 },
+            skills: { score: 0, skills: [] },
+            formatting: { score: 0 }
+          },
+          sectionBreakdown: {
+            contact: { score: 0 },
+            contactInformation: { score: 0 },
+            summary: { score: 0 },
+            professionalSummary: { score: 0 },
+            education: { score: 0 },
+            technicalSkills: { score: 0 },
+            workExperience: { score: 0 },
+            internships: { score: 0 },
+            projects: { score: 0 },
+            certifications: { score: 0 },
+            relevantKeywords: { score: 0 },
+            formatting: { score: 0 },
+            formattingReadability: { score: 0 },
+            atsCompatibility: { score: 0 }
+          }
+        },
+        driveMatches: [],
+        studentSkills: student.skills || []
+      });
     }
 
     // If student still has no analysis, build a live preview based on student profile
@@ -234,12 +621,19 @@ ${(student.projects || []).map(p => `Project: ${p.title} - ${p.description} Tech
     const candidateSkills = student.skills || analysis?.allExtractedSkills || [];
     const driveMatches = matchSkillsWithDrives(candidateSkills, drives);
 
+    const isDocNotResume = student.resumeProcessingStatus === 'rejected' ||
+      analysis?.isValidResume === false ||
+      student.resumeAnalysis?.isValidResume === false;
+    const finalAtsScore = isDocNotResume ? 0 : (student.atsScore ?? analysis?.score ?? 0);
+
     res.json({
       hasResume: Boolean(student.resume),
+      isValidResume: !isDocNotResume,
+      resume: student.resume,
       resumeUrl: student.resume,
-      atsScore: student.atsScore || analysis.score,
+      atsScore: finalAtsScore,
       analysis,
-      driveMatches,
+      driveMatches: isDocNotResume ? [] : driveMatches,
       studentSkills: student.skills || []
     });
   } catch (error) {
@@ -254,20 +648,24 @@ export const checkResumeText = async (req, res) => {
       return res.status(400).json({ error: 'Please provide resume text to analyze' });
     }
 
-    const atsResult = analyzeATS(text);
-    const skillResult = extractCategorizedSkills(text);
-    const roleReadiness = calculateRoleReadiness(skillResult.allSkills);
-
+    let targetDrive = null;
     let driveMatch = null;
     if (targetDriveId) {
-      const drive = await PlacementDrive.findById(targetDriveId).populate('company');
-      if (drive) {
+      targetDrive = await PlacementDrive.findById(targetDriveId).populate('company');
+      if (targetDrive) {
         driveMatch = {
-          drive,
-          ...matchResumeWithDrive(text, drive.requirements, drive.description)
+          drive: targetDrive,
+          ...matchResumeWithDrive(text, targetDrive.requirements, targetDrive.description)
         };
       }
     }
+
+    const atsResult = await analyzeResumeWithAI({
+      resumeText: text,
+      targetDrive
+    });
+    const skillResult = extractCategorizedSkills(text);
+    const roleReadiness = calculateRoleReadiness(skillResult.allSkills);
 
     res.json({
       atsResult,
@@ -288,25 +686,19 @@ export const getSkillAnalysis = async (req, res) => {
     }
 
     const drives = await PlacementDrive.find({ status: { $in: ['upcoming', 'ongoing'] } }).populate('company');
+    const assessmentSessions = await AssessmentSession.find({ student: student._id });
+    const mockInterviews = await MockInterview.find({ student: student._id });
 
-    // Extract skills from resume text or profile
-    const textToScan = student.resumeParsedText || student.skills.join(' ');
-    const extracted = extractCategorizedSkills(textToScan);
-    const activeSkills = Array.from(new Set([...(student.skills || []), ...extracted.allSkills]));
-
-    const roleReadiness = calculateRoleReadiness(activeSkills);
-    const driveMatches = matchSkillsWithDrives(activeSkills, drives);
-    const roadmap = generateSkillRoadmap(activeSkills, roleReadiness);
+    const skillAnalysis = await analyzeSkillsWithAI({
+      student,
+      drives,
+      assessmentSessions,
+      mockInterviews
+    });
 
     res.json({
       hasResume: Boolean(student.resume),
-      categorizedSkills: extracted.categorized,
-      allExtractedSkills: extracted.allSkills,
-      profileSkills: student.skills || [],
-      activeSkills,
-      roleReadiness,
-      driveMatches,
-      roadmap
+      ...skillAnalysis
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -321,9 +713,14 @@ export const syncSkills = async (req, res) => {
       return res.status(404).json({ error: 'Student profile not found' });
     }
 
-    // Merge skills uniquely
-    const newSkillSet = Array.from(new Set([...(student.skills || []), ...skills]));
-    student.skills = newSkillSet;
+    // If explicit skills list provided, use it; otherwise use the extracted skills from active resume
+    const sourceSkills = skills && skills.length > 0
+      ? skills
+      : (student.extractedSkills?.allSkills || student.skills || []);
+
+    const normalizedSkills = Array.from(new Set(sourceSkills.map(s => String(s).trim()).filter(Boolean)));
+    student.skills = normalizedSkills;
+    student.lastSkillSyncAt = new Date();
 
     // Recalculate strength
     let strengthPoints = 0;
@@ -337,8 +734,11 @@ export const syncSkills = async (req, res) => {
     await student.save();
 
     res.json({
-      message: 'Skills synchronized successfully',
+      message: 'Skills synchronized to profile successfully',
       skills: student.skills,
+      allExtractedSkills: student.extractedSkills?.allSkills || student.skills,
+      profileSkills: student.skills,
+      lastSkillSyncAt: student.lastSkillSyncAt,
       profileStrength: student.profileStrength
     });
   } catch (error) {
@@ -353,15 +753,30 @@ export const chatWithBot = async (req, res) => {
       return res.status(400).json({ error: 'Message cannot be empty' });
     }
 
-    const student = await Student.findOne({ userId: req.user.id });
+    let student = await Student.findOne({ userId: req.user.id });
+    if (!student) {
+      student = await Student.create({
+        userId: req.user.id,
+        rollNumber: `ROLL-${Date.now().toString().slice(-6)}`,
+        department: 'General',
+        batch: new Date().getFullYear().toString()
+      });
+    }
     const user = await User.findById(req.user.id);
     const drives = await PlacementDrive.find({ status: { $in: ['upcoming', 'ongoing'] } }).populate('company');
-    const applications = await Application.find({ student: student?._id }).populate('placementDrive company');
-    const interviews = await Interview.find({ student: student?._id }).populate('company placementDrive');
+    const applications = await Application.find({ student: student._id }).populate('placementDrive company');
+    const interviews = await Interview.find({ student: student._id }).populate('company placementDrive');
 
-    // Process using context-aware engine
-    const { reply, suggestions } = await processChatQuery({
+    // Multi-turn recent conversation history from ChatMessage collection (latest 10 chronologically)
+    const historyDocs = await ChatMessage.find({ studentId: student._id })
+      .sort({ createdAt: -1 })
+      .limit(10);
+    const recentHistory = historyDocs.reverse();
+
+    // Process using Gemini Copilot Service (with context-aware fallback)
+    const { reply, suggestions, isAiPowered } = await answerCopilotQuery({
       message,
+      chatHistory: recentHistory,
       student,
       user,
       drives,
@@ -370,26 +785,25 @@ export const chatWithBot = async (req, res) => {
     });
 
     // Save user message and bot reply in ChatMessage
-    if (student) {
-      await ChatMessage.create({
-        studentId: student._id,
-        userId: req.user.id,
-        sender: 'user',
-        text: message
-      });
+    await ChatMessage.create({
+      studentId: student._id,
+      userId: req.user.id,
+      sender: 'user',
+      text: message
+    });
 
-      await ChatMessage.create({
-        studentId: student._id,
-        userId: req.user.id,
-        sender: 'assistant',
-        text: reply,
-        suggestions
-      });
-    }
+    await ChatMessage.create({
+      studentId: student._id,
+      userId: req.user.id,
+      sender: 'assistant',
+      text: reply,
+      suggestions
+    });
 
     res.json({
       reply,
       suggestions,
+      isAiPowered: Boolean(isAiPowered),
       timestamp: new Date()
     });
   } catch (error) {
@@ -405,11 +819,12 @@ export const getChatHistory = async (req, res) => {
       return res.json([]);
     }
 
-    const messages = await ChatMessage.find({ studentId: student._id })
-      .sort({ createdAt: 1 })
-      .limit(40);
+    // Retrieve up to 50 most recent messages, ordered chronologically
+    const historyDocs = await ChatMessage.find({ studentId: student._id })
+      .sort({ createdAt: -1 })
+      .limit(50);
 
-    res.json(messages);
+    res.json(historyDocs.reverse());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -429,21 +844,174 @@ export const clearChatHistory = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { bio, skills, department, batch, rollNumber, cgpa } = req.body;
+    const {
+      name,
+      phone,
+      bio,
+      skills,
+      programmingLanguages,
+      department,
+      batch,
+      rollNumber,
+      cgpa,
+      dob,
+      gender,
+      address,
+      city,
+      state,
+      country,
+      university,
+      campus,
+      degree,
+      currentSemester,
+      activeBacklogs,
+      certifications,
+      projects,
+      experience,
+      socialLinks,
+      careerObjective,
+      preferredRoles,
+      preferredLocations
+    } = req.body;
+
     const allowedUpdates = {};
-    if (bio !== undefined) allowedUpdates.bio = bio;
-    if (skills !== undefined) allowedUpdates.skills = skills;
+
+    // Academic & identification
     if (department !== undefined) allowedUpdates.department = department;
     if (batch !== undefined) allowedUpdates.batch = batch;
     if (rollNumber !== undefined) allowedUpdates.rollNumber = rollNumber;
-    if (cgpa !== undefined) allowedUpdates.cgpa = Number(cgpa) || 0;
+    if (university !== undefined) allowedUpdates.university = university;
+    if (campus !== undefined) allowedUpdates.campus = campus;
+    if (degree !== undefined) allowedUpdates.degree = degree;
+    if (currentSemester !== undefined) allowedUpdates.currentSemester = currentSemester;
+    if (activeBacklogs !== undefined) allowedUpdates.activeBacklogs = Number(activeBacklogs) || 0;
+
+    // CGPA Validation (Strict 0.0 - 10.0 scale)
+    if (cgpa !== undefined && cgpa !== null && cgpa !== '') {
+      const parsedCgpa = parseFloat(cgpa);
+      if (isNaN(parsedCgpa) || parsedCgpa < 0 || parsedCgpa > 10) {
+        return res.status(400).json({ error: 'CGPA must be a valid number between 0.00 and 10.00' });
+      }
+      allowedUpdates.cgpa = Math.round(parsedCgpa * 100) / 100;
+    }
+
+    // Personal details
+    if (phone !== undefined) allowedUpdates.phone = phone;
+    if (dob !== undefined) allowedUpdates.dob = dob;
+    if (gender !== undefined) allowedUpdates.gender = gender;
+    if (address !== undefined) allowedUpdates.address = address;
+    if (city !== undefined) allowedUpdates.city = city;
+    if (state !== undefined) allowedUpdates.state = state;
+    if (country !== undefined) allowedUpdates.country = country;
+
+    // Professional details
+    if (bio !== undefined) allowedUpdates.bio = bio;
+    if (skills !== undefined) {
+      allowedUpdates.skills = Array.isArray(skills)
+        ? skills.filter(Boolean)
+        : typeof skills === 'string'
+        ? skills.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
+    }
+    if (programmingLanguages !== undefined) {
+      allowedUpdates.programmingLanguages = Array.isArray(programmingLanguages)
+        ? programmingLanguages.filter(Boolean)
+        : typeof programmingLanguages === 'string'
+        ? programmingLanguages.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
+    }
+    if (certifications !== undefined) allowedUpdates.certifications = certifications;
+    if (projects !== undefined) allowedUpdates.projects = projects;
+    if (experience !== undefined) allowedUpdates.experience = experience;
+    if (socialLinks !== undefined) allowedUpdates.socialLinks = socialLinks;
+
+    // Career preferences
+    if (careerObjective !== undefined) allowedUpdates.careerObjective = careerObjective;
+    if (preferredRoles !== undefined) {
+      allowedUpdates.preferredRoles = Array.isArray(preferredRoles)
+        ? preferredRoles.filter(Boolean)
+        : typeof preferredRoles === 'string'
+        ? preferredRoles.split(',').map((r) => r.trim()).filter(Boolean)
+        : [];
+    }
+    if (preferredLocations !== undefined) {
+      allowedUpdates.preferredLocations = Array.isArray(preferredLocations)
+        ? preferredLocations.filter(Boolean)
+        : typeof preferredLocations === 'string'
+        ? preferredLocations.split(',').map((l) => l.trim()).filter(Boolean)
+        : [];
+    }
+
+    // Update User model (name & phone)
+    const userUpdates = {};
+    if (name) userUpdates.name = name.trim();
+    if (phone !== undefined) userUpdates.phone = phone.trim();
+    if (Object.keys(userUpdates).length > 0) {
+      await User.findByIdAndUpdate(req.user.id, userUpdates);
+    }
+
+    // Dynamic Profile Completeness calculation
+    let studentDoc = await Student.findOne({ userId: req.user.id });
+    if (!studentDoc) {
+      studentDoc = await Student.create({
+        userId: req.user.id,
+        rollNumber: rollNumber || `ROLL-${Date.now().toString().slice(-6)}`,
+        department: department || 'General',
+        batch: batch || new Date().getFullYear().toString()
+      });
+    }
+
+    const merged = { ...studentDoc.toObject(), ...allowedUpdates };
+    let score = 0;
+    // Personal details (25%)
+    if (name || studentDoc.userId?.name) score += 5;
+    if (merged.phone) score += 5;
+    if (merged.rollNumber) score += 5;
+    if (merged.dob || merged.gender) score += 5;
+    if (merged.city || merged.address) score += 5;
+
+    // Academic details (30%)
+    if (merged.department && merged.department !== 'General') score += 8;
+    if (merged.degree) score += 7;
+    if (merged.batch) score += 5;
+    if (merged.cgpa != null && merged.cgpa > 0) score += 10;
+
+    // Professional & Skills (30%)
+    if (merged.skills && merged.skills.length > 0) score += 10;
+    if (merged.programmingLanguages && merged.programmingLanguages.length > 0) score += 5;
+    if (merged.resume) score += 10;
+    if ((merged.projects && merged.projects.length > 0) || (merged.certifications && merged.certifications.length > 0)) score += 5;
+
+    // Preferences & Socials (15%)
+    if (merged.careerObjective) score += 5;
+    if (merged.preferredRoles && merged.preferredRoles.length > 0) score += 5;
+    if (merged.socialLinks?.linkedin || merged.socialLinks?.github) score += 5;
+
+    allowedUpdates.profileStrength = Math.min(100, Math.max(15, score));
 
     const student = await Student.findOneAndUpdate(
       { userId: req.user.id },
       allowedUpdates,
       { new: true }
-    );
+    ).populate('userId', 'name email phone profilePicture role');
     res.json(student);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const uploadProfilePhoto = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Please upload a valid image file (JPG, PNG, WEBP, GIF).' });
+    }
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { profilePicture: avatarUrl },
+      { new: true }
+    ).select('-password');
+    res.json({ message: 'Profile photo updated successfully', profilePicture: avatarUrl, user });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -451,10 +1019,44 @@ export const updateProfile = async (req, res) => {
 
 export const getPlacementDrives = async (req, res) => {
   try {
-    const drives = await PlacementDrive.find({ status: { $in: ['upcoming', 'ongoing'] } })
+    // Students only see approved or legacy drives with active status
+    const drives = await PlacementDrive.find({
+      status: { $in: ['upcoming', 'ongoing'] },
+      $or: [
+        { approvalStatus: 'approved' },
+        { approvalStatus: { $exists: false } }
+      ]
+    })
       .populate('company')
       .sort({ registrationDeadline: 1 });
     res.json(drives);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const withdrawApplication = async (req, res) => {
+  try {
+    const { applicationId } = req.params;
+    const student = await Student.findOne({ userId: req.user.id });
+    if (!student) {
+      return res.status(404).json({ error: 'Student profile not found' });
+    }
+
+    const application = await Application.findOne({ _id: applicationId, student: student._id });
+    if (!application) {
+      return res.status(404).json({ error: 'Application not found or unauthorized' });
+    }
+
+    if (['selected', 'offer_accepted', 'withdrawn', 'rejected'].includes(application.status)) {
+      return res.status(400).json({ error: `Cannot withdraw an application that is already ${application.status}.` });
+    }
+
+    application.status = 'withdrawn';
+    application.feedback = 'Application withdrawn by candidate.';
+    await application.save();
+
+    res.json({ message: 'Application successfully withdrawn.', application });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -504,7 +1106,8 @@ export const applyForDrive = async (req, res) => {
       driveDate: drive.driveDate,
       registrationDeadline: drive.registrationDeadline,
       requirements: drive.requirements,
-      driveId: drive._id
+      driveId: drive._id,
+      applicationId: application._id
     });
 
     if (emailResult?.success) {
@@ -577,7 +1180,7 @@ export const getCredibilityAnalysis = async (req, res) => {
       return res.status(404).json({ error: 'Student profile not found' });
     }
 
-    const result = checkResumeCredibility(student);
+    const result = await checkCredibilityWithAI(student);
     student.credibilityCheck = result;
     await student.save();
 
@@ -596,14 +1199,16 @@ export const getPlacementJourney = async (req, res) => {
     const interviews = await Interview.find({ student: student?._id }).populate('placementDrive company');
     const drives = await PlacementDrive.find({ status: { $in: ['upcoming', 'ongoing'] } }).populate('company');
     const mockInterviews = await MockInterview.find({ student: student?._id });
+    const assessmentSessions = await AssessmentSession.find({ student: student?._id });
 
-    const journey = calculatePlacementJourney({
+    const journey = await generatePlacementJourneyWithAI({
       student: student || {},
       user: user || {},
       applications,
       interviews,
       drives,
-      mockInterviews
+      mockInterviews,
+      assessmentSessions
     });
 
     res.json(journey);
@@ -620,7 +1225,7 @@ export const getRejectionAnalysis = async (req, res) => {
     const allDrives = await PlacementDrive.find().populate('company');
     const interviews = await Interview.find({ student: student?._id }).populate('placementDrive company');
 
-    const analysis = analyzeShortlistingHistory({
+    const analysis = await analyzeShortlistWithAI({
       student: student || {},
       applications,
       allDrives,
@@ -652,7 +1257,7 @@ export const getCompanyPrepMode = async (req, res) => {
       return res.status(404).json({ error: 'No active placement drives found for preparation mode' });
     }
 
-    const prepPlan = generateCompanyPrepPlan({
+    const prepPlan = await generateCompanyPrepWithAI({
       student: student || {},
       drive
     });
@@ -675,7 +1280,7 @@ export const generateMockInterview = async (req, res) => {
       drive = await PlacementDrive.findById(driveId).populate('company');
     }
 
-    const generated = generateCompanyMockInterview(drive || {}, customRole || 'Software Engineer');
+    const generated = await generateInterviewSessionWithAI(drive || {}, customRole || 'Software Engineer');
 
     const mockInterview = await MockInterview.create({
       student: student._id,
@@ -706,13 +1311,18 @@ export const submitMockAnswer = async (req, res) => {
     if (qIndex === -1) return res.status(404).json({ error: 'Question not found' });
 
     const question = interview.questions[qIndex];
-    const evaluation = evaluateAnswer(question, studentAnswer);
+    const evaluation = await evaluateInterviewAnswerWithAI({
+      question,
+      studentAnswer,
+      companyName: interview.companyName || 'Company'
+    });
 
     interview.questions[qIndex].studentAnswer = studentAnswer;
     interview.questions[qIndex].score = evaluation.score;
     interview.questions[qIndex].feedback = evaluation.feedback;
     interview.questions[qIndex].strengths = evaluation.strengths;
     interview.questions[qIndex].missingPoints = evaluation.missingPoints;
+    interview.questions[qIndex].followUpQuestion = evaluation.followUpQuestion || null;
     interview.questions[qIndex].isAnswered = true;
     interview.questions[qIndex].answeredAt = new Date();
 
@@ -734,7 +1344,7 @@ export const completeMockInterview = async (req, res) => {
     const interview = await MockInterview.findById(id);
     if (!interview) return res.status(404).json({ error: 'Mock interview session not found' });
 
-    const scores = calculatePlacementScore(interview);
+    const scores = await calculateFinalInterviewReportWithAI(interview);
 
     interview.overallScore = scores.overallScore;
     interview.placementReadinessScore = scores.placementReadinessScore;
@@ -792,7 +1402,7 @@ export const getPeerBenchmark = async (req, res) => {
 
     const allStudents = await Student.find();
 
-    const benchmark = calculatePeerBenchmark({
+    const benchmark = await interpretPeerBenchmarkWithAI({
       currentStudent,
       allStudents
     });
@@ -968,5 +1578,96 @@ export const testEmailDelivery = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// ==================== APPLICATION ASSISTANT (COVER LETTER & RECRUITER EMAILS) ====================
+export const generateCoverLetter = async (req, res) => {
+  try {
+    const { driveId, customTone } = req.body;
+    const student = await Student.findOne({ userId: req.user.id });
+    const user = await User.findById(req.user.id);
+    const drive = await PlacementDrive.findById(driveId).populate('company');
+    if (!drive) return res.status(404).json({ error: 'Placement drive not found' });
+
+    const letter = await draftCoverLetterWithAI({
+      student: student || {},
+      user: user || {},
+      drive,
+      customTone: customTone || 'Professional'
+    });
+
+    res.json(letter);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const generateRecruiterEmail = async (req, res) => {
+  try {
+    const { driveId, emailType } = req.body;
+    const student = await Student.findOne({ userId: req.user.id });
+    const user = await User.findById(req.user.id);
+    const drive = await PlacementDrive.findById(driveId).populate('company');
+    if (!drive) return res.status(404).json({ error: 'Placement drive not found' });
+
+    const email = await draftRecruiterEmailWithAI({
+      student: student || {},
+      user: user || {},
+      drive,
+      emailType: emailType || 'initial_outreach'
+    });
+
+    res.json(email);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const summarizePlacementDrive = async (req, res) => {
+  try {
+    const { driveId } = req.params;
+    const student = await Student.findOne({ userId: req.user.id });
+    const drive = await PlacementDrive.findById(driveId).populate('company');
+    if (!drive) return res.status(404).json({ error: 'Placement drive not found' });
+
+    const summary = await summarizeDriveAndAlignment({
+      drive,
+      student: student || {}
+    });
+
+    res.json(summary);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// ==================== COLLABORATIVE EXERCISES ====================
+export const generateCollaborationExercise = async (req, res) => {
+  try {
+    const { peerId, focusArea = 'DSA & System Design' } = req.body;
+    const currentStudent = await Student.findOne({ userId: req.user.id });
+    const peerStudent = await Student.findById(peerId);
+
+    const exercise = await generateCollaborativeExerciseWithAI({
+      focusArea,
+      senderSkills: currentStudent?.skills || [],
+      receiverSkills: peerStudent?.skills || []
+    });
+
+    res.json(exercise);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// ==================== GEMINI DIAGNOSTIC STATUS ====================
+export const getGeminiDiagnosticStatus = async (req, res) => {
+  try {
+    const health = await checkGeminiHealth();
+    res.json(health);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 
 

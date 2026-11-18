@@ -11,6 +11,10 @@ import {
   createDrive,
   updateDrive,
   toggleDriveStatus,
+  getPendingDrives,
+  approveDrive,
+  rejectDrive,
+  requestDriveChanges,
   getApplications,
   updateApplicationStatus,
   getInterviews,
@@ -41,7 +45,11 @@ router.get('/students', getStudents);
 router.get('/companies', getCompanies);
 router.post('/verify-company', verifyCompany);
 
-// Placement Drive Management
+// Placement Drive Management & Approvals
+router.get('/drives/pending', getPendingDrives);
+router.post('/drives/:driveId/approve', approveDrive);
+router.post('/drives/:driveId/reject', rejectDrive);
+router.post('/drives/:driveId/request-changes', requestDriveChanges);
 router.get('/drives', getDrives);
 router.post('/drives', createDrive);
 router.put('/drives/:driveId', updateDrive);

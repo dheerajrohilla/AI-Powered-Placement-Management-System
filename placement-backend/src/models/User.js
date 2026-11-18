@@ -33,11 +33,40 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  adminId: {
+    type: String,
+    default: null
+  },
+  designation: {
+    type: String,
+    default: null
+  },
+  department: {
+    type: String,
+    default: null
+  },
+  organization: {
+    type: String,
+    default: null
+  },
+  bio: {
+    type: String,
+    default: null
+  },
+  officeLocation: {
+    type: String,
+    default: null
+  },
   isActive: {
     type: Boolean,
     default: true
   },
   passwordResetToken: {
+    type: String,
+    default: null,
+    select: false
+  },
+  passwordResetOtp: {
     type: String,
     default: null,
     select: false
