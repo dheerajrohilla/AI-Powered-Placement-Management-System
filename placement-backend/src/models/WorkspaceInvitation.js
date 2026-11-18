@@ -18,10 +18,17 @@ const workspaceInvitationSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  recipientEmail: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    index: true
+  },
   status: {
     type: String,
     enum: ['pending', 'accepted', 'declined'],
-    default: 'pending'
+    default: 'pending',
+    index: true
   },
   message: {
     type: String,
@@ -30,9 +37,14 @@ const workspaceInvitationSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
 });
 
 workspaceInvitationSchema.index({ workspace: 1, recipient: 1, status: 1 });
+workspaceInvitationSchema.index({ recipientEmail: 1, status: 1 });
 
 export default mongoose.model('WorkspaceInvitation', workspaceInvitationSchema);

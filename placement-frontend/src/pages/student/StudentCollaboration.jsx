@@ -60,6 +60,7 @@ function StudentCollaboration() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
+  const [invitingPeer, setInvitingPeer] = useState(false);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [newTaskData, setNewTaskData] = useState({ title: "", description: "", priority: "medium", dueDate: "" });
   const [showCreateResModal, setShowCreateResModal] = useState(false);
@@ -90,12 +91,15 @@ function StudentCollaboration() {
       setInvitations(invRes.data || []);
 
       if (wsList.length > 0) {
-        // preserve active workspace or pick first
-        const selected = wsList.find(w => w._id === activeWorkspace?._id) || wsList[0];
-        setActiveWorkspace(selected);
-        if (selected.channels && selected.channels.length > 0) {
-          setActiveChannel(selected.channels[0]);
-        }
+        setActiveWorkspace((prevWs) => {
+          const selected = (prevWs && wsList.find(w => w._id === prevWs._id)) || wsList[0];
+          if (selected?.channels && selected.channels.length > 0) {
+            setActiveChannel((prevCh) => {
+              return (prevCh && selected.channels.find(c => c._id === prevCh._id)) || selected.channels[0];
+            });
+          }
+          return selected;
+        });
       }
     } catch (err) {
       console.error("Failed to load workspaces:", err);
@@ -107,6 +111,27 @@ function StudentCollaboration() {
   useEffect(() => {
     fetchWorkspaces();
   }, []);
+
+  // Handle workspace selection
+  const handleSelectWorkspace = async (ws) => {
+    setActiveWorkspace(ws);
+    if (ws.channels && ws.channels.length > 0) {
+      setActiveChannel(ws.channels[0]);
+    } else {
+      try {
+        const res = await studentAPI.getWorkspaceById(ws._id);
+        if (res.data?.channels && res.data.channels.length > 0) {
+          setActiveChannel(res.data.channels[0]);
+          setActiveWorkspace(prev => ({ ...prev, channels: res.data.channels }));
+        }
+      } catch (err) {
+        console.error("Failed to load workspace channels:", err);
+      }
+    }
+    if (activeTab === "invitations") {
+      setActiveTab("chat");
+    }
+  };
 
   // Fetch channel messages when channel changes
   const fetchMessages = useCallback(async (workspaceId, channelId) => {
@@ -198,14 +223,21 @@ function StudentCollaboration() {
 
     const channelId = activeChannel?._id;
 
-    // Join workspace & channel rooms
+    // Join workspace & channel rooms using both event formats for complete compatibility
     socket.emit("workspace:join", {
       workspaceId: activeWorkspace._id,
       channelId
     });
+    socket.emit("join_workspace", { workspaceId: activeWorkspace._id });
+    if (channelId) {
+      socket.emit("join_channel", { workspaceId: activeWorkspace._id, channelId });
+    }
 
     const handleNewMessage = (newMsg) => {
-      if (newMsg.channelId === activeChannel?._id || newMsg.channel === activeChannel?._id) {
+      if (!newMsg) return;
+      const targetChId = activeChannel?._id;
+      const msgChId = newMsg.channelId || newMsg.channel?._id || newMsg.channel;
+      if (msgChId === targetChId || !targetChId) {
         setMessages((prev) => {
           if (prev.some(m => m._id === newMsg._id)) return prev;
           return [...prev, newMsg];
@@ -246,50 +278,73 @@ function StudentCollaboration() {
       }));
     };
 
+    const handleNewInvitation = () => {
+      studentAPI.getWorkspaceInvitations().then(res => setInvitations(res.data || [])).catch(() => {});
+    };
+
     socket.on("workspace:message:new", handleNewMessage);
+    socket.on("new_message", handleNewMessage);
     socket.on("workspace:message:updated", handleMessageUpdated);
+    socket.on("message_updated", handleMessageUpdated);
     socket.on("workspace:message:deleted", handleMessageDeleted);
     socket.on("workspace:typing", handleTyping);
     socket.on("workspace:code:sync", handleCodeSync);
+    socket.on("code_updated", handleCodeSync);
+    socket.on("workspace:invitation:new", handleNewInvitation);
 
     return () => {
       socket.off("workspace:message:new", handleNewMessage);
+      socket.off("new_message", handleNewMessage);
       socket.off("workspace:message:updated", handleMessageUpdated);
+      socket.off("message_updated", handleMessageUpdated);
       socket.off("workspace:message:deleted", handleMessageDeleted);
       socket.off("workspace:typing", handleTyping);
       socket.off("workspace:code:sync", handleCodeSync);
+      socket.off("code_updated", handleCodeSync);
+      socket.off("workspace:invitation:new", handleNewInvitation);
     };
   }, [activeWorkspace, activeChannel, currentUserId]);
 
   // Send message
   const handleSendMessage = async (e) => {
     e?.preventDefault();
-    if (!messageText.trim() || !activeWorkspace || !activeChannel || sendingMessage) return;
+    const trimmed = messageText.trim();
+    if (!trimmed || sendingMessage) return;
+
+    if (!activeWorkspace) {
+      showFeedback("Please select or create a workspace first.");
+      return;
+    }
+
+    const targetChannel = activeChannel || (activeWorkspace.channels && activeWorkspace.channels[0]);
+    const targetChannelId = targetChannel?._id || "general";
 
     try {
       setSendingMessage(true);
-      const res = await studentAPI.sendWorkspaceMessage(activeWorkspace._id, activeChannel._id, {
-        content: messageText.trim()
+      const res = await studentAPI.sendWorkspaceMessage(activeWorkspace._id, targetChannelId, {
+        content: trimmed
       });
 
       // Clear typing indicator
       const socket = getSocket();
       socket?.emit("workspace:typing", {
         workspaceId: activeWorkspace._id,
-        channelId: activeChannel._id,
+        channelId: targetChannelId,
         isTyping: false
       });
 
       setMessageText("");
-      // Append if socket hasn't done so already
-      setMessages((prev) => {
-        if (prev.some((m) => m._id === res.data._id)) return prev;
-        return [...prev, res.data];
-      });
+      // Append confirmed saved message from database
+      if (res.data) {
+        setMessages((prev) => {
+          if (prev.some((m) => m._id === res.data._id)) return prev;
+          return [...prev, res.data];
+        });
+      }
       setTimeout(scrollToBottom, 50);
     } catch (err) {
       console.error("Failed to send message:", err);
-      showFeedback("Failed to send message.");
+      showFeedback(err.response?.data?.error || "Failed to send message. Please try again.");
     } finally {
       setSendingMessage(false);
     }
@@ -299,11 +354,13 @@ function StudentCollaboration() {
   const handleInputChange = (e) => {
     setMessageText(e.target.value);
     const socket = getSocket();
-    if (!socket || !activeWorkspace || !activeChannel) return;
+    if (!socket || !activeWorkspace) return;
+
+    const channelId = activeChannel?._id || activeWorkspace.channels?.[0]?._id;
 
     socket.emit("workspace:typing", {
       workspaceId: activeWorkspace._id,
-      channelId: activeChannel._id,
+      channelId,
       isTyping: true
     });
 
@@ -311,7 +368,7 @@ function StudentCollaboration() {
     typingTimeoutRef.current = setTimeout(() => {
       socket.emit("workspace:typing", {
         workspaceId: activeWorkspace._id,
-        channelId: activeChannel._id,
+        channelId,
         isTyping: false
       });
     }, 2000);
@@ -329,7 +386,7 @@ function StudentCollaboration() {
       setEditText("");
     } catch (err) {
       console.error("Failed to edit message:", err);
-      showFeedback("Failed to edit message.");
+      showFeedback(err.response?.data?.error || "Failed to edit message.");
     }
   };
 
@@ -341,7 +398,7 @@ function StudentCollaboration() {
       setMessages((prev) => prev.filter((m) => m._id !== messageId));
     } catch (err) {
       console.error("Failed to delete message:", err);
-      showFeedback("Failed to delete message.");
+      showFeedback(err.response?.data?.error || "Failed to delete message.");
     }
   };
 
@@ -366,30 +423,55 @@ function StudentCollaboration() {
   // Invite Peer to Workspace
   const handleInvitePeer = async (e) => {
     e.preventDefault();
-    if (!inviteEmail.trim() || !activeWorkspace) return;
+    const cleanEmail = inviteEmail.trim().toLowerCase();
+    if (!cleanEmail || !activeWorkspace) return;
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      showFeedback("Please enter a valid email address.");
+      return;
+    }
+
     try {
-      await studentAPI.inviteToWorkspace(activeWorkspace._id, {
-        email: inviteEmail.trim(),
+      setInvitingPeer(true);
+      const res = await studentAPI.inviteToWorkspace(activeWorkspace._id, {
+        email: cleanEmail,
         role: inviteRole
       });
-      showFeedback(`✓ Invitation sent to ${inviteEmail}!`);
+      showFeedback(res.data?.message || `✓ Invitation successfully sent to ${cleanEmail}!`);
       setShowInviteModal(false);
       setInviteEmail("");
     } catch (err) {
       console.error("Failed to send invitation:", err);
       showFeedback(err.response?.data?.error || "Failed to send invitation.");
+    } finally {
+      setInvitingPeer(false);
     }
   };
 
   // Respond to Workspace Invitation
-  const handleRespondInvitation = async (invitationId, status) => {
+  const handleRespondInvitation = async (invitationId, action) => {
     try {
-      await studentAPI.respondToWorkspaceInvitation(invitationId, status);
-      showFeedback(`✓ Invitation ${status}!`);
+      const cleanAction = action === "accepted" ? "accept" : (action === "declined" ? "decline" : action);
+      const res = await studentAPI.respondToWorkspaceInvitation(invitationId, cleanAction);
+      showFeedback(res.data?.message || `✓ Invitation ${cleanAction === "accept" ? "accepted" : "declined"} successfully!`);
       await fetchWorkspaces();
+
+      if (cleanAction === "accept") {
+        if (res.data?.workspaceId) {
+          const joinedWs = workspaces.find(w => w._id === res.data.workspaceId);
+          if (joinedWs) {
+            setActiveWorkspace(joinedWs);
+            if (joinedWs.channels && joinedWs.channels.length > 0) {
+              setActiveChannel(joinedWs.channels[0]);
+            }
+          }
+        }
+        setActiveTab("chat");
+      }
     } catch (err) {
       console.error("Failed to respond to invitation:", err);
-      showFeedback("Failed to update invitation.");
+      showFeedback(err.response?.data?.error || "Failed to respond to invitation.");
     }
   };
 
@@ -704,6 +786,46 @@ function StudentCollaboration() {
                 </button>
               </div>
 
+              {/* INVITATIONS SHORTCUT IN SIDEBAR */}
+              <div style={{ padding: "0 12px 10px" }}>
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    background: activeTab === "invitations" ? "#2563eb" : (invitations.length > 0 ? "#1e293b" : "transparent"),
+                    color: activeTab === "invitations" ? "#ffffff" : (invitations.length > 0 ? "#60a5fa" : "#94a3b8"),
+                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    fontWeight: 600,
+                    fontSize: "13px",
+                    border: invitations.length > 0 && activeTab !== "invitations" ? "1px solid #3b82f6" : "1px solid transparent",
+                    transition: "all 0.2s"
+                  }}
+                  onClick={() => setActiveTab("invitations")}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>📬</span>
+                    <span>Invitations</span>
+                  </span>
+                  {invitations.length > 0 && (
+                    <span
+                      style={{
+                        background: activeTab === "invitations" ? "#ffffff" : "#ef4444",
+                        color: activeTab === "invitations" ? "#2563eb" : "#ffffff",
+                        padding: "1px 7px",
+                        borderRadius: "10px",
+                        fontSize: "11px",
+                        fontWeight: 700
+                      }}
+                    >
+                      {invitations.length}
+                    </span>
+                  )}
+                </div>
+              </div>
+
               {/* WORKSPACE SELECTOR */}
               <div className="collab-workspace-list">
                 {workspaces.map((ws) => {
@@ -712,12 +834,7 @@ function StudentCollaboration() {
                     <div
                       key={ws._id}
                       className={`collab-ws-item ${isActive ? "active" : ""}`}
-                      onClick={() => {
-                        setActiveWorkspace(ws);
-                        if (ws.channels && ws.channels.length > 0) {
-                          setActiveChannel(ws.channels[0]);
-                        }
-                      }}
+                      onClick={() => handleSelectWorkspace(ws)}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
                         <span style={{ fontSize: "16px" }}>{ws.isPrivate ? "🔒" : "🌐"}</span>
@@ -764,8 +881,12 @@ function StudentCollaboration() {
 
               {/* USER FOOTER */}
               <div style={{ padding: "14px 16px", borderTop: "1px solid #1e293b", display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "13px" }}>
-                  {user?.name ? user.name[0].toUpperCase() : "U"}
+                <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "13px", overflow: "hidden" }}>
+                  {user?.profilePicture ? (
+                    <img src={user.profilePicture} alt={user.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    user?.name ? user.name[0].toUpperCase() : "U"
+                  )}
                 </div>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   <div style={{ fontSize: "13px", fontWeight: 600, color: "#f8fafc" }}>{user?.name || "Student"}</div>
@@ -781,7 +902,7 @@ function StudentCollaboration() {
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <h2 style={{ fontSize: "18px", fontWeight: 700, color: "#0f172a", margin: 0 }}>
-                      {activeWorkspace?.name}
+                      {activeWorkspace?.name || "Study Workspace"}
                     </h2>
                     <span style={{ background: "#e2e8f0", color: "#475569", padding: "2px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: 600 }}>
                       {userRole.toUpperCase()}
@@ -819,6 +940,19 @@ function StudentCollaboration() {
                     💻 Code Lab
                   </button>
                   <button
+                    className={`collab-tab-btn ${activeTab === "members" ? "active" : ""}`}
+                    onClick={() => setActiveTab("members")}
+                  >
+                    👥 Members ({activeWorkspace?.members?.length || 1})
+                  </button>
+                  <button
+                    className={`collab-tab-btn ${activeTab === "invitations" ? "active" : ""}`}
+                    onClick={() => setActiveTab("invitations")}
+                    style={{ position: "relative" }}
+                  >
+                    📬 Invitations {invitations.length > 0 ? `(${invitations.length})` : ""}
+                  </button>
+                  <button
                     className={`collab-tab-btn ${activeTab === "discovery" ? "active" : ""}`}
                     onClick={() => setActiveTab("discovery")}
                   >
@@ -849,15 +983,20 @@ function StudentCollaboration() {
                       </div>
                     ) : (
                       messages.map((m) => {
-                        const senderId = m.sender?._id || m.sender?.userId?._id || m.sender;
-                        const isMe = senderId === currentUserId;
-                        const senderName = m.sender?.name || m.sender?.userId?.name || "Peer";
+                        const senderId = m.sender?._id || m.sender?.userId?._id || m.senderUser?._id || m.senderUser || m.sender;
+                        const isMe = String(senderId) === String(currentUserId) || (m.senderUser && String(m.senderUser) === String(currentUserId));
+                        const senderName = m.senderName || m.sender?.userId?.name || m.senderUser?.name || "Peer";
+                        const avatarUrl = m.sender?.userId?.profilePicture || m.senderUser?.profilePicture;
                         const isEditing = editingMessageId === m._id;
 
                         return (
                           <div key={m._id} className={`collab-msg-bubble ${isMe ? "me" : ""}`}>
-                            <div className="collab-msg-avatar" style={{ background: isMe ? "#2563eb" : "#7c3aed" }}>
-                              {senderName[0]?.toUpperCase() || "P"}
+                            <div className="collab-msg-avatar" style={{ background: isMe ? "#2563eb" : "#7c3aed", overflow: "hidden" }}>
+                              {avatarUrl ? (
+                                <img src={avatarUrl} alt={senderName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              ) : (
+                                senderName[0]?.toUpperCase() || "P"
+                              )}
                             </div>
                             <div className="collab-msg-content" style={{ minWidth: "160px" }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
@@ -941,22 +1080,52 @@ function StudentCollaboration() {
                   )}
 
                   {/* MESSAGE COMPOSER */}
-                  <form onSubmit={handleSendMessage} className="collab-composer">
-                    <input
-                      type="text"
+                  <form onSubmit={handleSendMessage} className="collab-composer" style={{ alignItems: "center" }}>
+                    <textarea
+                      rows={1}
                       className="collab-composer-input"
-                      placeholder={`Message #${activeChannel?.name || "general"}... (Press Enter to send)`}
+                      placeholder={`Message #${activeChannel?.name || (activeWorkspace?.channels?.[0]?.name) || "general"}... (Enter to send, Shift+Enter for new line)`}
                       value={messageText}
                       onChange={handleInputChange}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendMessage(e);
+                        }
+                      }}
                       disabled={sendingMessage}
+                      style={{
+                        resize: "none",
+                        minHeight: "42px",
+                        maxHeight: "120px",
+                        fontFamily: "inherit",
+                        padding: "10px 14px",
+                        lineHeight: "1.4"
+                      }}
                     />
                     <button
                       type="submit"
                       className="ai-btn-primary"
                       disabled={!messageText.trim() || sendingMessage}
-                      style={{ padding: "10px 18px" }}
+                      style={{
+                        padding: "10px 20px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontWeight: 600,
+                        cursor: (!messageText.trim() || sendingMessage) ? "not-allowed" : "pointer",
+                        opacity: (!messageText.trim() || sendingMessage) ? 0.6 : 1,
+                        whiteSpace: "nowrap"
+                      }}
                     >
-                      {sendingMessage ? "Sending..." : "Send 🚀"}
+                      {sendingMessage ? (
+                        <>
+                          <span className="spinner" style={{ width: "12px", height: "12px" }}></span>
+                          <span>Sending...</span>
+                        </>
+                      ) : (
+                        <span>Send 🚀</span>
+                      )}
                     </button>
                   </form>
                 </div>
@@ -1457,6 +1626,232 @@ function StudentCollaboration() {
                   ) : null}
                 </div>
               )}
+
+              {/* TAB CONTENT: 7. WORKSPACE MEMBERS */}
+              {activeTab === "members" && (
+                <div style={{ padding: "24px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
+                    <div>
+                      <h3 style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "#1e293b" }}>
+                        Workspace Members ({activeWorkspace?.members?.length || 0})
+                      </h3>
+                      <p style={{ margin: "2px 0 0", fontSize: "13px", color: "#64748b" }}>
+                        Active students collaborating inside this workspace.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ai-btn-primary"
+                      onClick={() => setShowInviteModal(true)}
+                      style={{ padding: "8px 16px", fontSize: "13px" }}
+                    >
+                      + Invite Peer
+                    </button>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
+                    {(activeWorkspace?.members || []).map((m, idx) => {
+                      const studentObj = m.student || {};
+                      const userObj = studentObj.userId || {};
+                      const mName = userObj.name || studentObj.rollNumber || "Student";
+                      const mEmail = userObj.email || "";
+                      const mRole = m.role || "member";
+
+                      return (
+                        <div
+                          key={m._id || idx}
+                          style={{
+                            background: "#ffffff",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: "10px",
+                            padding: "16px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "12px",
+                            boxShadow: "0 1px 3px rgba(0,0,0,0.03)"
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: "44px",
+                              height: "44px",
+                              borderRadius: "50%",
+                              background: mRole === "owner" ? "#f59e0b" : "#2563eb",
+                              color: "#fff",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontWeight: 700,
+                              fontSize: "16px",
+                              flexShrink: 0,
+                              overflow: "hidden"
+                            }}
+                          >
+                            {userObj.profilePicture ? (
+                              <img
+                                src={userObj.profilePicture}
+                                alt={mName}
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              />
+                            ) : (
+                              mName[0]?.toUpperCase() || "S"
+                            )}
+                          </div>
+                          <div style={{ overflow: "hidden", flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <span style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                                {mName}
+                              </span>
+                              <span style={{
+                                fontSize: "10px",
+                                padding: "1px 6px",
+                                borderRadius: "8px",
+                                fontWeight: 600,
+                                textTransform: "capitalize",
+                                background: mRole === "owner" ? "#fef3c7" : "#eff6ff",
+                                color: mRole === "owner" ? "#b45309" : "#1d4ed8"
+                              }}>
+                                {mRole}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: "12px", color: "#64748b", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                              {mEmail}
+                            </div>
+                            {studentObj.department && (
+                              <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
+                                {studentObj.department} {studentObj.batch ? `• Batch ${studentObj.batch}` : ""}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB CONTENT: 8. INVITATIONS & REQUESTS */}
+              {activeTab === "invitations" && (
+                <div style={{ padding: "24px", maxWidth: "900px" }}>
+                  <div style={{ marginBottom: "20px" }}>
+                    <h3 style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "#1e293b" }}>
+                      📬 Workspace Invitations ({invitations.length})
+                    </h3>
+                    <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#64748b" }}>
+                      Review and accept study group invitations sent to your account from fellow students.
+                    </p>
+                  </div>
+
+                  {invitations.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "60px 20px", background: "#f8fafc", borderRadius: "12px", border: "1px dashed #cbd5e1", color: "#64748b" }}>
+                      <div style={{ fontSize: "40px", marginBottom: "12px" }}>📬</div>
+                      <h4 style={{ margin: "0 0 6px", fontSize: "16px", color: "#334155" }}>No Pending Invitations</h4>
+                      <p style={{ margin: 0, fontSize: "13px" }}>
+                        You're all caught up! When a peer invites you to collaborate in their workspace, you will receive it here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                      {invitations.map((inv) => {
+                        const senderUser = inv.sender?.userId || {};
+                        const senderName = senderUser.name || "A Peer Student";
+                        const senderEmail = senderUser.email || inv.sender?.rollNumber || "";
+                        const wsName = inv.workspace?.name || "Study Workspace";
+                        const wsDesc = inv.workspace?.description || "Collaborative workspace for campus placement prep.";
+                        const wsCategory = inv.workspace?.category || "General";
+                        const invDate = new Date(inv.createdAt).toLocaleDateString(undefined, {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric"
+                        });
+
+                        return (
+                          <div
+                            key={inv._id}
+                            style={{
+                              background: "#ffffff",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: "12px",
+                              padding: "20px",
+                              boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "12px"
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
+                              <div>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                                  <h4 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>
+                                    {wsName}
+                                  </h4>
+                                  <span style={{ background: "#eff6ff", color: "#2563eb", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: 600 }}>
+                                    {wsCategory}
+                                  </span>
+                                </div>
+                                <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
+                                  {wsDesc}
+                                </p>
+                              </div>
+
+                              <div style={{ fontSize: "12px", color: "#94a3b8" }}>
+                                Received {invDate}
+                              </div>
+                            </div>
+
+                            <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #f1f5f9" }}>
+                              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>
+                                Invited by: <strong>{senderName}</strong> {senderEmail ? `(${senderEmail})` : ""}
+                              </div>
+                              {inv.message && (
+                                <div style={{ fontSize: "13px", color: "#334155", fontStyle: "italic" }}>
+                                  "{inv.message}"
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "4px" }}>
+                              <button
+                                type="button"
+                                onClick={() => handleRespondInvitation(inv._id, "decline")}
+                                style={{
+                                  padding: "8px 16px",
+                                  borderRadius: "8px",
+                                  border: "1px solid #cbd5e1",
+                                  background: "#ffffff",
+                                  color: "#64748b",
+                                  fontSize: "13px",
+                                  fontWeight: 600,
+                                  cursor: "pointer"
+                                }}
+                              >
+                                Decline
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRespondInvitation(inv._id, "accept")}
+                                style={{
+                                  padding: "8px 18px",
+                                  borderRadius: "8px",
+                                  border: "none",
+                                  background: "#16a34a",
+                                  color: "#ffffff",
+                                  fontSize: "13px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                                }}
+                              >
+                                Accept & Join Workspace
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1553,7 +1948,7 @@ function StudentCollaboration() {
               <form onSubmit={handleInvitePeer} style={{ padding: "24px" }}>
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                    Student Email *
+                    Student Email Address *
                   </label>
                   <input
                     type="email"
@@ -1561,17 +1956,22 @@ function StudentCollaboration() {
                     placeholder="student@campus.edu"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
+                    disabled={invitingPeer}
                     style={{ width: "100%", padding: "10px 14px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "14px" }}
                   />
+                  <span style={{ fontSize: "12px", color: "#64748b", marginTop: "4px", display: "block" }}>
+                    Must belong to a registered student account on the placement portal.
+                  </span>
                 </div>
 
                 <div style={{ marginBottom: "20px" }}>
                   <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                    Role
+                    Workspace Role
                   </label>
                   <select
                     value={inviteRole}
                     onChange={(e) => setInviteRole(e.target.value)}
+                    disabled={invitingPeer}
                     style={{ width: "100%", padding: "10px 14px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "14px" }}
                   >
                     <option value="member">Member (Can chat, create tasks, share code)</option>
@@ -1581,11 +1981,11 @@ function StudentCollaboration() {
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
-                  <button type="button" className="ai-btn-secondary" onClick={() => setShowInviteModal(false)}>
+                  <button type="button" className="ai-btn-secondary" onClick={() => setShowInviteModal(false)} disabled={invitingPeer}>
                     Cancel
                   </button>
-                  <button type="submit" className="ai-btn-primary">
-                    Send Invitation
+                  <button type="submit" className="ai-btn-primary" disabled={invitingPeer || !inviteEmail.trim()}>
+                    {invitingPeer ? "Sending Invitation..." : "Send Invitation"}
                   </button>
                 </div>
               </form>

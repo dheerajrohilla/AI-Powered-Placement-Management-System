@@ -17,6 +17,13 @@ export const studentAPI = {
   getDashboard: () => apiClient.get('/student/dashboard'),
   getProfile: () => apiClient.get('/student/profile'),
   updateProfile: (data) => apiClient.put('/student/profile', data),
+  uploadPhoto: (file) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    return apiClient.post('/student/profile/photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
   uploadResume: (file) => {
     const formData = new FormData();
     formData.append('resume', file);
@@ -75,9 +82,19 @@ export const studentAPI = {
   updateWorkspace: (id, data) => apiClient.put(`/student/workspaces/${id}`, data),
   deleteWorkspace: (id) => apiClient.delete(`/student/workspaces/${id}`),
   joinWorkspace: (id, inviteCode) => apiClient.post(`/student/workspaces/${id}/join`, { inviteCode }),
-  inviteToWorkspace: (id, recipientStudentId, message) => apiClient.post(`/student/workspaces/${id}/invite`, { recipientStudentId, message }),
-  getWorkspaceInvitations: () => apiClient.get('/student/workspaces/invitations'),
+  inviteToWorkspace: (id, payload, message) => {
+    let body = {};
+    if (typeof payload === 'string') {
+      body = { email: payload, message };
+    } else if (payload && typeof payload === 'object') {
+      body = { ...payload };
+      if (message && !body.message) body.message = message;
+    }
+    return apiClient.post(`/student/workspaces/${id}/invite`, body);
+  },
+  getWorkspaceInvitations: (params) => apiClient.get('/student/workspaces/invitations', { params }),
   respondToWorkspaceInvitation: (invitationId, action) => apiClient.post(`/student/workspaces/invitations/${invitationId}/respond`, { action }),
+  getWorkspaceMembers: (id) => apiClient.get(`/student/workspaces/${id}/members`),
   getChannelMessages: (workspaceId, channelId, page = 1) => apiClient.get(`/student/workspaces/${workspaceId}/channels/${channelId}/messages?page=${page}`),
   sendWorkspaceMessage: (workspaceId, channelId, data) => apiClient.post(`/student/workspaces/${workspaceId}/channels/${channelId}/messages`, data),
   editWorkspaceMessage: (workspaceId, messageId, content) => apiClient.put(`/student/workspaces/${workspaceId}/messages/${messageId}`, { content }),
@@ -117,6 +134,13 @@ export const aiPrepAPI = {
 export const companyAPI = {
   getProfile: () => apiClient.get('/company/profile'),
   updateProfile: (data) => apiClient.put('/company/profile', data),
+  uploadLogo: (file) => {
+    const formData = new FormData();
+    formData.append('logo', file);
+    return apiClient.post('/company/profile/logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
   getDashboard: () => apiClient.get('/company/dashboard'),
   createDrive: (data) => apiClient.post('/company/drives', data),
   getDrives: () => apiClient.get('/company/drives'),
@@ -136,6 +160,13 @@ export const companyAPI = {
 export const tpoAPI = {
   getProfile: () => apiClient.get('/tpo/profile'),
   updateProfile: (data) => apiClient.put('/tpo/profile', data),
+  uploadPhoto: (file) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    return apiClient.post('/tpo/profile/photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
   changePassword: (data) => apiClient.put('/tpo/change-password', data),
   getDashboard: () => apiClient.get('/tpo/dashboard'),
   getStudents: () => apiClient.get('/tpo/students'),
@@ -166,6 +197,13 @@ export const tpoAPI = {
 export const adminAPI = {
   getProfile: () => apiClient.get('/admin/profile'),
   updateProfile: (data) => apiClient.put('/admin/profile', data),
+  uploadPhoto: (file) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    return apiClient.post('/admin/profile/photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
   changePassword: (data) => apiClient.put('/admin/change-password', data),
   getDashboard: () => apiClient.get('/admin/dashboard'),
   getUsers: () => apiClient.get('/admin/users'),
@@ -227,6 +265,20 @@ export const interviewAPI = {
   updateStatus: (interviewId, data) => apiClient.patch(`/interviews/${interviewId}/status`, data),
   getInterviewDetails: (interviewId) => apiClient.get(`/interviews/${interviewId}`)
 };
+
+// ==================== UNIVERSAL PROFILE SERVICE ====================
+export const profileAPI = {
+  getProfile: () => apiClient.get('/profile'),
+  updateProfile: (data) => apiClient.put('/profile', data),
+  uploadPhoto: (file) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    return apiClient.post('/profile/photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
+};
+
 
 
 

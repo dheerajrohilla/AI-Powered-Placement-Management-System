@@ -51,7 +51,7 @@ function StudentDashboard() {
         marginBottom: "24px"
       }}>
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px", flexWrap: "wrap" }}>
             <h1 style={{ fontSize: "26px", fontWeight: "800", color: "#0F172A", margin: 0, letterSpacing: "-0.5px" }}>
               Welcome back, {user?.name || "Student"}!
             </h1>
@@ -70,6 +70,23 @@ function StudentDashboard() {
               <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10B981", boxShadow: "0 0 6px #10B981" }} />
               Active Season 2026
             </span>
+            <Link to="/student/profile" style={{ textDecoration: "none" }}>
+              <span style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 12px",
+                background: "#EFF6FF",
+                color: "#2563EB",
+                borderRadius: "20px",
+                fontSize: "11px",
+                fontWeight: "700",
+                border: "1px solid #BFDBFE",
+                cursor: "pointer"
+              }}>
+                🎓 CGPA: {stats ? (stats.cgpa != null && stats.cgpa > 0 ? Number(stats.cgpa).toFixed(2) : (stats.cgpaDisplay || "Not Provided")) : "..."}
+              </span>
+            </Link>
           </div>
           <p style={{ color: "#64748B", fontSize: "14px", margin: 0 }}>
             Your real-time AI placement command center and career progression dashboard.
@@ -158,6 +175,14 @@ function StudentDashboard() {
 
       {/* METRIC STATS CARDS */}
       <div className="stats-grid">
+        <Link to="/student/profile" style={{ textDecoration: "none", color: "inherit" }}>
+          <StatCard
+            title="Academic CGPA"
+            value={stats ? (stats.cgpa != null && stats.cgpa > 0 ? Number(stats.cgpa).toFixed(2) : (stats.cgpaDisplay || "Not Provided")) : "--"}
+            icon="🎓"
+            description="Verified Academic Standing • Edit"
+          />
+        </Link>
         <StatCard
           title="ATS Score"
           value={stats ? `${stats.atsScore}%` : "--"}

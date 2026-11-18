@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getProfile,
   updateProfile,
+  uploadCompanyLogo,
   getDashboard,
   createDrive,
   submitDriveForApproval,
@@ -17,6 +18,7 @@ import {
   markNotificationRead
 } from '../controllers/companyController.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { handleLogoUpload, handleAvatarUpload } from '../middleware/upload.js';
 
 const router = express.Router();
 
@@ -26,6 +28,8 @@ router.use(authorize('company'));
 // Profile & Organization
 router.get('/profile', getProfile);
 router.put('/profile', updateProfile);
+router.post('/profile/logo', handleLogoUpload, uploadCompanyLogo);
+router.post('/profile/photo', handleAvatarUpload, uploadCompanyLogo);
 
 // Dashboard
 router.get('/dashboard', getDashboard);

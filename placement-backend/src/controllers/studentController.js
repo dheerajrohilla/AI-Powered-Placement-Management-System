@@ -65,6 +65,33 @@ export const resolveResumePath = (resumePath) => {
   return path.join(backendRoot, relPath);
 };
 
+export const resolveStudentCgpa = (student) => {
+  if (!student) return null;
+  if (student.cgpa != null && !isNaN(Number(student.cgpa)) && Number(student.cgpa) > 0) {
+    return Number(student.cgpa);
+  }
+  if (student.currentCgpa != null && !isNaN(Number(student.currentCgpa)) && Number(student.currentCgpa) > 0) {
+    return Number(student.currentCgpa);
+  }
+  if (student.academic?.cgpa != null && !isNaN(Number(student.academic.cgpa)) && Number(student.academic.cgpa) > 0) {
+    return Number(student.academic.cgpa);
+  }
+  if (Array.isArray(student.education)) {
+    for (const edu of student.education) {
+      if (edu && edu.score) {
+        const match = String(edu.score).match(/(\d+(\.\d+)?)/);
+        if (match) {
+          const val = parseFloat(match[1]);
+          if (!isNaN(val) && val > 0 && val <= 10) {
+            return val;
+          }
+        }
+      }
+    }
+  }
+  return null;
+};
+
 export const getDashboard = async (req, res) => {
   try {
     let student = await Student.findOne({ userId: req.user.id });
@@ -75,6 +102,12 @@ export const getDashboard = async (req, res) => {
         department: 'General',
         batch: new Date().getFullYear().toString()
       });
+    }
+
+    const effectiveCgpa = resolveStudentCgpa(student);
+    if ((student.cgpa == null || student.cgpa === 0) && effectiveCgpa != null) {
+      student.cgpa = effectiveCgpa;
+      await student.save();
     }
 
     const applications = await Application.countDocuments({ student: student._id });
@@ -109,8 +142,8 @@ export const getDashboard = async (req, res) => {
       hasResume: Boolean(student.resume),
       geminiConfigured: isGeminiConfigured(),
       geminiModel: getGeminiModel(),
-      cgpa: student.cgpa != null && student.cgpa > 0 ? Number(student.cgpa) : 0,
-      cgpaDisplay: student.cgpa != null && student.cgpa > 0 ? Number(student.cgpa).toFixed(2) : 'Not Provided',
+      cgpa: effectiveCgpa != null ? effectiveCgpa : null,
+      cgpaDisplay: effectiveCgpa != null ? Number(effectiveCgpa).toFixed(2) : 'Not Provided',
       department: student.department || 'Not Provided',
       rollNumber: student.rollNumber || 'Not Provided',
       batch: student.batch || 'Not Provided',
@@ -149,7 +182,7 @@ export const getAiDashboardSummary = async (req, res) => {
 
 export const getProfile = async (req, res) => {
   try {
-    let student = await Student.findOne({ userId: req.user.id }).populate('userId');
+    let student = await Student.findOne({ userId: req.user.id }).populate('userId', 'name email phone profilePicture role');
     if (!student) {
       const newStudent = await Student.create({
         userId: req.user.id,
@@ -157,7 +190,12 @@ export const getProfile = async (req, res) => {
         department: 'General',
         batch: new Date().getFullYear().toString()
       });
-      student = await Student.findById(newStudent._id).populate('userId');
+      student = await Student.findById(newStudent._id).populate('userId', 'name email phone profilePicture role');
+    }
+    const effectiveCgpa = resolveStudentCgpa(student);
+    if ((student.cgpa == null || student.cgpa === 0) && effectiveCgpa != null) {
+      student.cgpa = effectiveCgpa;
+      await student.save();
     }
     res.json(student);
   } catch (error) {

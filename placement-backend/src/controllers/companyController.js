@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import User from '../models/User.js';
 import Company from '../models/Company.js';
 import PlacementDrive from '../models/PlacementDrive.js';
 import Application from '../models/Application.js';
@@ -24,7 +25,11 @@ const findOrCreateCompany = async (user) => {
 export const getProfile = async (req, res) => {
   try {
     const company = await findOrCreateCompany(req.user);
-    res.json(company);
+    const user = await User.findById(req.user.id).select('name email phone profilePicture role');
+    res.json({
+      ...company.toObject(),
+      userId: user
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -33,23 +38,81 @@ export const getProfile = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const company = await findOrCreateCompany(req.user);
-    const { companyName, website, location, industry, description, hrName, hrPhone, hrEmail } = req.body;
+    const {
+      companyName,
+      website,
+      location,
+      headquarters,
+      officeLocations,
+      companySize,
+      industry,
+      description,
+      hrName,
+      hrPhone,
+      hrEmail,
+      linkedin
+    } = req.body;
+
+    const allowedUpdates = {};
+    if (companyName) allowedUpdates.companyName = companyName.trim();
+    if (website !== undefined) allowedUpdates.website = website ? website.trim() : '';
+    if (location !== undefined) allowedUpdates.location = location ? location.trim() : '';
+    if (headquarters !== undefined) allowedUpdates.headquarters = headquarters ? headquarters.trim() : '';
+    if (officeLocations !== undefined) allowedUpdates.officeLocations = officeLocations ? officeLocations.trim() : '';
+    if (companySize !== undefined) allowedUpdates.companySize = companySize;
+    if (industry !== undefined) allowedUpdates.industry = industry ? industry.trim() : '';
+    if (description !== undefined) allowedUpdates.description = description ? description.trim() : '';
+    if (hrName !== undefined) allowedUpdates.hrName = hrName ? hrName.trim() : '';
+    if (hrPhone !== undefined) allowedUpdates.hrPhone = hrPhone ? hrPhone.trim() : '';
+    if (hrEmail !== undefined) allowedUpdates.hrEmail = hrEmail ? hrEmail.trim().toLowerCase() : '';
+    if (linkedin !== undefined) allowedUpdates.linkedin = linkedin ? linkedin.trim() : '';
 
     const updated = await Company.findByIdAndUpdate(
       company._id,
-      {
-        ...(companyName && { companyName }),
-        ...(website !== undefined && { website }),
-        ...(location !== undefined && { location }),
-        ...(industry !== undefined && { industry }),
-        ...(description !== undefined && { description }),
-        ...(hrName !== undefined && { hrName }),
-        ...(hrPhone !== undefined && { hrPhone }),
-        ...(hrEmail !== undefined && { hrEmail })
-      },
+      allowedUpdates,
       { new: true }
     );
-    res.json(updated);
+
+    // Keep User model in sync for name and phone
+    const userUpdates = {};
+    if (companyName) userUpdates.name = companyName.trim();
+    if (hrPhone) userUpdates.phone = hrPhone.trim();
+    if (Object.keys(userUpdates).length > 0) {
+      await User.findByIdAndUpdate(req.user.id, userUpdates);
+    }
+
+    const user = await User.findById(req.user.id).select('name email phone profilePicture role');
+    res.json({
+      ...updated.toObject(),
+      userId: user
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const uploadCompanyLogo = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Please upload a valid logo file (JPG, PNG, WEBP, GIF).' });
+    }
+    const logoUrl = `/uploads/logos/${req.file.filename}`;
+    const company = await findOrCreateCompany(req.user);
+    company.logo = logoUrl;
+    await company.save();
+
+    await User.findByIdAndUpdate(req.user.id, { profilePicture: logoUrl });
+    const user = await User.findById(req.user.id).select('name email phone profilePicture role');
+
+    res.json({
+      message: 'Company logo updated successfully',
+      logo: logoUrl,
+      profilePicture: logoUrl,
+      company: {
+        ...company.toObject(),
+        userId: user
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { LogOut } from "lucide-react";
 import LogoutConfirmModal from "./LogoutConfirmModal";
+import { getAssetUrl } from "../services/api";
 
 function AdminSidebar({ mobileOpen = false, onClose }) {
   const { user, logout } = useAuth();
@@ -230,7 +231,23 @@ function AdminSidebar({ mobileOpen = false, onClose }) {
               border: "1px solid rgba(255, 255, 255, 0.05)"
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+            <Link
+              to="/admin/profile"
+              style={{
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                minWidth: 0,
+                flex: 1,
+                cursor: "pointer",
+                padding: "4px 6px",
+                borderRadius: "8px",
+                transition: "background 0.15s ease"
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            >
               <div
                 style={{
                   width: "32px",
@@ -243,10 +260,20 @@ function AdminSidebar({ mobileOpen = false, onClose }) {
                   fontWeight: 700,
                   fontSize: "12px",
                   color: "#ffffff",
-                  flexShrink: 0
+                  flexShrink: 0,
+                  overflow: "hidden"
                 }}
               >
-                {userInitials}
+                {user?.profilePicture ? (
+                  <img
+                    src={getAssetUrl(user.profilePicture)}
+                    alt={displayName}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                ) : (
+                  userInitials
+                )}
               </div>
               <div style={{ minWidth: 0 }}>
                 <div
@@ -261,11 +288,11 @@ function AdminSidebar({ mobileOpen = false, onClose }) {
                 >
                   {displayName}
                 </div>
-                <div style={{ fontSize: "11px", color: "#a855f7" }}>
-                  System Admin
+                <div style={{ fontSize: "11px", color: "#a855f7", fontWeight: 600 }}>
+                  View Profile ➔
                 </div>
               </div>
-            </div>
+            </Link>
 
             <button
               onClick={() => setShowLogoutModal(true)}

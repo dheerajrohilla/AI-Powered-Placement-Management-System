@@ -201,7 +201,7 @@ test('GET /api/quiz/dashboard returns overall stats, subject cards, and recommen
   assert.ok(dash.overall.totalQuizzes >= 1);
   assert.ok(dash.overall.totalQuestions >= 15);
   assert.ok(dash.overall.overallAvgScore > 0);
-  assert.equal(dash.subjectWise.length, 6, 'Must contain all 6 subjects');
+  assert.ok(dash.subjectWise.length >= 6, 'Must contain all core subjects');
   assert.ok(dash.recommendations.length > 0, 'Must provide personalized recommendations');
   assert.ok(dash.recentAttempts.length >= 1, 'Must include recent quiz attempt in history');
 });

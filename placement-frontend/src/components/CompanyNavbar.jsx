@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
+import { getAssetUrl } from "../services/api";
 
 function CompanyNavbar({ onToggleMenu }) {
   const { user } = useAuth();
@@ -114,7 +115,24 @@ function CompanyNavbar({ onToggleMenu }) {
           🔔
         </Link>
 
-        <div className="navbar-profile" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <Link
+          to="/company/profile"
+          className="navbar-profile"
+          style={{
+            textDecoration: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            background: "#ffffff",
+            padding: "4px 10px 4px 6px",
+            borderRadius: "10px",
+            border: "1px solid #e2e8f0",
+            cursor: "pointer",
+            transition: "all 0.15s ease"
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.borderColor = "#0284c7"}
+          onMouseLeave={(e) => e.currentTarget.style.borderColor = "#e2e8f0"}
+        >
           <div
             className="profile-circle"
             style={{
@@ -127,10 +145,20 @@ function CompanyNavbar({ onToggleMenu }) {
               alignItems: "center",
               justifyContent: "center",
               fontWeight: 700,
-              fontSize: "14px"
+              fontSize: "14px",
+              overflow: "hidden"
             }}
           >
-            {initial}
+            {user?.profilePicture ? (
+              <img
+                src={getAssetUrl(user.profilePicture)}
+                alt={displayName}
+                style={{ width: "100%", height: "100%", objectFit: "contain", background: "#ffffff" }}
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+            ) : (
+              initial
+            )}
           </div>
 
           <div style={{ lineHeight: 1.2 }}>
@@ -141,7 +169,7 @@ function CompanyNavbar({ onToggleMenu }) {
               Recruiter
             </span>
           </div>
-        </div>
+        </Link>
       </div>
     </header>
   );

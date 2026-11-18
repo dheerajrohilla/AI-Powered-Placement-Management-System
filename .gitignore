@@ -25,6 +25,10 @@ placement-backend/uploads/*
 **/uploads/resumes/*
 !**/uploads/.gitkeep
 
+# ---- Database & Runtime Data ----
+data/
+**/data/
+
 # ---- Logs ----
 logs/
 *.log

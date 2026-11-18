@@ -89,7 +89,7 @@ export const initSocketIO = (httpServer) => {
     }
 
     // Join Workspace Room (with server-side membership authorization check)
-    socket.on('join_workspace', async ({ workspaceId }) => {
+    const handleJoinWorkspace = async ({ workspaceId, channelId }) => {
       try {
         if (!workspaceId) return;
 
@@ -107,6 +107,9 @@ export const initSocketIO = (httpServer) => {
         }
 
         socket.join(`workspace:${workspaceId}`);
+        if (channelId) {
+          socket.join(`workspace:${workspaceId}:channel:${channelId}`);
+        }
         io.to(`workspace:${workspaceId}`).emit('user_joined_workspace', {
           studentId,
           studentName,
@@ -115,7 +118,10 @@ export const initSocketIO = (httpServer) => {
       } catch (err) {
         socket.emit('error', { message: err.message });
       }
-    });
+    };
+
+    socket.on('join_workspace', handleJoinWorkspace);
+    socket.on('workspace:join', handleJoinWorkspace);
 
     // Join Specific Channel Room
     socket.on('join_channel', async ({ workspaceId, channelId }) => {
@@ -149,7 +155,7 @@ export const initSocketIO = (httpServer) => {
     });
 
     // Real-Time Message Dispatch
-    socket.on('send_message', async ({ workspaceId, channelId, content, replyTo }) => {
+    const handleSendMessage = async ({ workspaceId, channelId, content, replyTo }) => {
       try {
         if (!content || !content.trim()) return;
 
@@ -179,15 +185,22 @@ export const initSocketIO = (httpServer) => {
         });
 
         const populated = await WorkspaceMessage.findById(messageDoc._id)
-          .populate({ path: 'sender', select: 'department batch rollNumber' })
+          .populate({ path: 'sender', select: 'department batch rollNumber userId', populate: { path: 'userId', select: 'name email profilePicture' } })
+          .populate('senderUser', 'name email profilePicture')
           .populate('replyTo');
 
         const roomName = `workspace:${workspaceId}:channel:${channelId}`;
         io.to(roomName).emit('new_message', populated);
+        io.to(roomName).emit('workspace:message:new', populated);
+        io.to(`workspace:${workspaceId}`).emit('new_message', populated);
+        io.to(`workspace:${workspaceId}`).emit('workspace:message:new', populated);
       } catch (err) {
         socket.emit('error', { message: err.message });
       }
-    });
+    };
+
+    socket.on('send_message', handleSendMessage);
+    socket.on('workspace:message:send', handleSendMessage);
 
     // Typing Indicators
     socket.on('typing_start', ({ workspaceId, channelId }) => {
@@ -196,6 +209,11 @@ export const initSocketIO = (httpServer) => {
         studentName,
         channelId
       });
+      socket.to(`workspace:${workspaceId}:channel:${channelId}`).emit('workspace:typing', {
+        userId: socket.user?._id?.toString(),
+        userName: socket.user?.name,
+        isTyping: true
+      });
     });
 
     socket.on('typing_stop', ({ workspaceId, channelId }) => {
@@ -203,10 +221,24 @@ export const initSocketIO = (httpServer) => {
         studentId,
         channelId
       });
+      socket.to(`workspace:${workspaceId}:channel:${channelId}`).emit('workspace:typing', {
+        userId: socket.user?._id?.toString(),
+        userName: socket.user?.name,
+        isTyping: false
+      });
+    });
+
+    socket.on('workspace:typing', ({ workspaceId, channelId, isTyping }) => {
+      const room = channelId ? `workspace:${workspaceId}:channel:${channelId}` : `workspace:${workspaceId}`;
+      socket.to(room).emit('workspace:typing', {
+        userId: socket.user?._id?.toString(),
+        userName: socket.user?.name,
+        isTyping: Boolean(isTyping)
+      });
     });
 
     // Collaborative Code Lab Real-Time Editing
-    socket.on('code_change', async ({ workspaceId, code, language }) => {
+    const handleCodeChange = async ({ workspaceId, code, language }) => {
       try {
         const workspace = await Workspace.findById(workspaceId);
         if (!workspace) return;
@@ -222,10 +254,23 @@ export const initSocketIO = (httpServer) => {
           language,
           lastEditedByName: studentName
         });
+        socket.to(`workspace:${workspaceId}:code`).emit('workspace:code:sync', {
+          code,
+          language,
+          senderUserId: socket.user?._id?.toString()
+        });
+        socket.to(`workspace:${workspaceId}`).emit('workspace:code:sync', {
+          code,
+          language,
+          senderUserId: socket.user?._id?.toString()
+        });
       } catch (err) {
         console.error('code_change error:', err);
       }
-    });
+    };
+
+    socket.on('code_change', handleCodeChange);
+    socket.on('workspace:code:sync', handleCodeChange);
 
     socket.on('join_code_session', async ({ workspaceId }) => {
       try {

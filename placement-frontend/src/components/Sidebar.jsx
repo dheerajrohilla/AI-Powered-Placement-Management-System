@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { LogOut } from "lucide-react";
 import LogoutConfirmModal from "./LogoutConfirmModal";
+import { getAssetUrl } from "../services/api";
 
 function Sidebar({ mobileOpen = false, onClose }) {
   const { user, logout } = useAuth();
@@ -26,6 +27,7 @@ function Sidebar({ mobileOpen = false, onClose }) {
       title: "OVERVIEW",
       items: [
         { path: "/student", label: "Command Center", icon: "⚡", badge: "Live" },
+        { path: "/student/profile", label: "My Profile", icon: "👤", badge: "Account" },
         { path: "/student/journey", label: "Placement Journey", icon: "🗺️" }
       ]
     },
@@ -236,7 +238,23 @@ function Sidebar({ mobileOpen = false, onClose }) {
               gap: "10px"
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+            <Link
+              to="/student/profile"
+              style={{
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                minWidth: 0,
+                flex: 1,
+                cursor: "pointer",
+                padding: "4px 6px",
+                borderRadius: "8px",
+                transition: "background 0.15s ease"
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            >
               <div
                 style={{
                   width: "36px",
@@ -251,10 +269,20 @@ function Sidebar({ mobileOpen = false, onClose }) {
                   fontWeight: 700,
                   fontSize: "13px",
                   position: "relative",
-                  flexShrink: 0
+                  flexShrink: 0,
+                  overflow: "hidden"
                 }}
               >
-                {userInitials}
+                {user?.profilePicture ? (
+                  <img
+                    src={getAssetUrl(user.profilePicture)}
+                    alt={displayName}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                ) : (
+                  userInitials
+                )}
                 <span
                   style={{
                     position: "absolute",
@@ -283,11 +311,11 @@ function Sidebar({ mobileOpen = false, onClose }) {
                 >
                   {displayName}
                 </div>
-                <div style={{ fontSize: "11px", color: "#64748b" }}>
-                  {user?.role ? user.role.toUpperCase() : "STUDENT"}
+                <div style={{ fontSize: "11px", color: "#38bdf8", fontWeight: 600 }}>
+                  View Profile ➔
                 </div>
               </div>
-            </div>
+            </Link>
 
             <button
               onClick={() => setShowLogoutModal(true)}

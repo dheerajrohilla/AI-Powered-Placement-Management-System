@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getProfile,
   updateProfile,
+  uploadProfilePhoto,
   changePassword,
   getDashboard,
   getStudents,
@@ -26,6 +27,7 @@ import {
   resolveConflictSlot
 } from '../controllers/tpoController.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { handleAvatarUpload } from '../middleware/upload.js';
 
 const router = express.Router();
 
@@ -35,6 +37,7 @@ router.use(authorize('tpo', 'admin'));
 // Profile & Security
 router.get('/profile', getProfile);
 router.put('/profile', updateProfile);
+router.post('/profile/photo', handleAvatarUpload, uploadProfilePhoto);
 router.put('/change-password', changePassword);
 
 // Dashboard

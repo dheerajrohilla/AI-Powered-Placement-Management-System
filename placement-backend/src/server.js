@@ -8,6 +8,7 @@ import studentRoutes from './routes/studentRoutes.js';
 import companyRoutes from './routes/companyRoutes.js';
 import tpoRoutes from './routes/tpoRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import profileRoutes from './routes/profileRoutes.js';
 import studyMaterialRoutes from './routes/studyMaterialRoutes.js';
 import quizRoutes from './routes/quizRoutes.js';
 import interviewRoutes from './routes/interviewRoutes.js';
@@ -82,6 +83,7 @@ export const setupApp = () => {
   }
 
   app.use('/api/auth', authRoutes);
+  app.use('/api/profile', profileRoutes);
   app.use('/api/student', studentRoutes);
   app.use('/api/company', companyRoutes);
   app.use('/api/tpo', tpoRoutes);

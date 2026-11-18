@@ -71,3 +71,49 @@ export const uploadLogo = multer({
   fileFilter: imageFileFilter
 });
 
+export const handleAvatarUpload = (req, res, next) => {
+  uploadAvatar.fields([
+    { name: 'photo', maxCount: 1 },
+    { name: 'avatar', maxCount: 1 },
+    { name: 'image', maxCount: 1 },
+    { name: 'file', maxCount: 1 }
+  ])(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'Image size exceeds maximum limit of 5MB.' });
+      }
+      return res.status(400).json({ error: err.message || 'Error uploading image file.' });
+    }
+    if (req.files) {
+      const file = req.files.photo?.[0] || req.files.avatar?.[0] || req.files.image?.[0] || req.files.file?.[0];
+      if (file) {
+        req.file = file;
+      }
+    }
+    next();
+  });
+};
+
+export const handleLogoUpload = (req, res, next) => {
+  uploadLogo.fields([
+    { name: 'logo', maxCount: 1 },
+    { name: 'photo', maxCount: 1 },
+    { name: 'image', maxCount: 1 },
+    { name: 'file', maxCount: 1 }
+  ])(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'Logo size exceeds maximum limit of 5MB.' });
+      }
+      return res.status(400).json({ error: err.message || 'Error uploading logo file.' });
+    }
+    if (req.files) {
+      const file = req.files.logo?.[0] || req.files.photo?.[0] || req.files.image?.[0] || req.files.file?.[0];
+      if (file) {
+        req.file = file;
+      }
+    }
+    next();
+  });
+};
+

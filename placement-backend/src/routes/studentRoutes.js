@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getDashboard,
   getProfile,
+  uploadProfilePhoto,
   uploadResume,
   getATSAnalysis,
   checkResumeText,
@@ -44,6 +45,7 @@ import {
   getWorkspaces,
   createWorkspace,
   getWorkspaceById,
+  getWorkspaceMembers,
   updateWorkspace,
   deleteWorkspace,
   joinWorkspace,
@@ -76,6 +78,7 @@ import {
   getRecruitmentPatterns
 } from '../controllers/aiPrepController.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { handleAvatarUpload } from '../middleware/upload.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -125,6 +128,7 @@ router.get('/dashboard', getDashboard);
 router.get('/dashboard/ai-summary', getAiDashboardSummary);
 router.get('/profile', getProfile);
 router.put('/profile', updateProfile);
+router.post('/profile/photo', handleAvatarUpload, uploadProfilePhoto);
 router.get('/gemini-status', getGeminiDiagnosticStatus);
 
 // Feature 1: AI Resume Consistency / Credibility Checker
@@ -174,6 +178,7 @@ router.post('/workspaces', createWorkspace);
 router.get('/workspaces/invitations', getMyInvitations);
 router.post('/workspaces/invitations/:invitationId/respond', respondToInvitation);
 router.get('/workspaces/:id', getWorkspaceById);
+router.get('/workspaces/:id/members', getWorkspaceMembers);
 router.put('/workspaces/:id', updateWorkspace);
 router.delete('/workspaces/:id', deleteWorkspace);
 router.post('/workspaces/:id/join', joinWorkspace);
